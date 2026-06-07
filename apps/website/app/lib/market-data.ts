@@ -589,6 +589,25 @@ export async function getMarketData(): Promise<MarketData> {
   };
 }
 
+/** 批量获取基金对比数据（并行获取多只基金详情） */
+export async function getFundCompareData(
+  codes: string[],
+): Promise<Array<FundDetailData & { error?: string }>> {
+  const results = await Promise.all(
+    codes.map(async (code) => {
+      try {
+        const detail = await getFundDetailData(code);
+        if (!detail)
+          return { code, name: code, error: "未找到" } as FundDetailData & { error: string };
+        return detail;
+      } catch {
+        return { code, name: code, error: "获取失败" } as FundDetailData & { error: string };
+      }
+    }),
+  );
+  return results;
+}
+
 /** 获取单个ETF基金详情 */
 export async function getFundDetail(code: string): Promise<{
   code: string;
@@ -622,8 +641,10 @@ export interface FundDetailData {
     threeMonth: number | null;
     sixMonth: number | null;
     oneYear: number | null;
+    threeYear: number | null;
+    sinceInception: number | null;
   };
-  // 业绩走势（近1年净值趋势，最多365个点）
+  // 业绩走势（全量净值趋势）
   navTrend: Array<{ date: string; nav: number; dailyReturn: number }>;
   // 重仓股行情
   topHoldings: Array<{
@@ -640,6 +661,16 @@ export interface FundDetailData {
     accNav: string;
     dailyGrowth: string;
   }>;
+  // 最大回撤
+  maxDrawdown: number | null;
+  // 月度收益率（用于热力图）
+  monthlyReturns: Array<{ year: number; month: number; returnRate: number }>;
+  // 基金经理
+  managers: Array<{
+    name: string;
+    tenure: string;
+    tenureReturn: number | null;
+  }>;
 }
 
 /** 从东方财富pingzhongdata JS中提取基金详情 */
@@ -654,14 +685,24 @@ export async function getFundDetailData(code: string): Promise<FundDetailData | 
       // 默认值
       const result: FundDetailData = {
         ...basic,
-        performance: { oneMonth: null, threeMonth: null, sixMonth: null, oneYear: null },
+        performance: {
+          oneMonth: null,
+          threeMonth: null,
+          sixMonth: null,
+          oneYear: null,
+          threeYear: null,
+          sinceInception: null,
+        },
         navTrend: [],
         topHoldings: [],
         navHistory: [],
+        maxDrawdown: null,
+        monthlyReturns: [],
+        managers: [],
       };
 
-      // 并行获取：pingzhongdata + 历史净值
-      const [pingzhongText, navHistoryData] = await Promise.all([
+      // 并行获取：pingzhongdata + 历史净值 + 基金经理
+      const [pingzhongText, navHistoryData, managerData] = await Promise.all([
         fetchText(`https://fund.eastmoney.com/pingzhongdata/${code}.js`, {
           headers: { Referer: "https://fund.eastmoney.com/" },
         }).catch(() => ""),
@@ -671,6 +712,29 @@ export async function getFundDetailData(code: string): Promise<FundDetailData | 
         }>(`https://api.fund.eastmoney.com/f10/lsjz?fundCode=${code}&pageIndex=1&pageSize=30`, {
           headers: { Referer: "https://fundf10.eastmoney.com/" },
         }).catch(() => ({}) as Record<string, unknown>),
+        fetchJson<{
+          Data?: {
+            fundManager?: Array<{
+              managerName: string;
+              tenure: string;
+              tenureReturn: string;
+            }>;
+          };
+        }>(`https://fund.eastmoney.com/pingzhongdata/${code}.js`, {
+          headers: { Referer: "https://fund.eastmoney.com/" },
+        })
+          .then(() => {
+            // pingzhongdata 不直接提供经理JSON，需要单独接口
+            return fetchJson<{
+              Data?: Array<{ jjjl?: string; rzrq?: string; jlr?: string }>;
+            }>(
+              `https://fund.eastmoney.com/FundArchivesDatas.aspx?type=jjjl&code=${code}&rt=0.${Date.now()}`,
+              {
+                headers: { Referer: "https://fundf10.eastmoney.com/" },
+              },
+            ).catch(() => ({}) as Record<string, unknown>);
+          })
+          .catch(() => ({}) as Record<string, unknown>),
       ]);
 
       // 解析pingzhongdata
@@ -680,11 +744,15 @@ export async function getFundDetailData(code: string): Promise<FundDetailData | 
         const syl6y = pingzhongText.match(/syl_6y="([^"]*)"/);
         const syl3y = pingzhongText.match(/syl_3y="([^"]*)"/);
         const syl1y = pingzhongText.match(/syl_1y="([^"]*)"/);
+        const syl3n = pingzhongText.match(/syl_3n="([^"]*)"/);
+        const sylCl = pingzhongText.match(/syl_cl="([^"]*)"/);
         result.performance = {
           oneMonth: syl1y?.[1] ? parseFloat(syl1y[1]) : null,
           threeMonth: syl3y?.[1] ? parseFloat(syl3y[1]) : null,
           sixMonth: syl6y?.[1] ? parseFloat(syl6y[1]) : null,
           oneYear: syl1n?.[1] ? parseFloat(syl1n[1]) : null,
+          threeYear: syl3n?.[1] ? parseFloat(syl3n[1]) : null,
+          sinceInception: sylCl?.[1] ? parseFloat(sylCl[1]) : null,
         };
 
         // 净值走势（全量数据，前端按时间范围过滤）
@@ -699,6 +767,12 @@ export async function getFundDetailData(code: string): Promise<FundDetailData | 
               nav: d.y,
               dailyReturn: d.equityReturn ?? 0,
             }));
+
+            // 计算最大回撤
+            result.maxDrawdown = calcMaxDrawdown(result.navTrend.map((d) => d.nav));
+
+            // 计算月度收益率
+            result.monthlyReturns = calcMonthlyReturns(allData);
           } catch {
             // 解析失败
           }
@@ -790,8 +864,96 @@ export async function getFundDetailData(code: string): Promise<FundDetailData | 
         }));
       }
 
+      // 解析基金经理（从HTML文本中提取）
+      const mgrData = managerData as { content?: string };
+      if (mgrData?.content) {
+        try {
+          // 匹配经理名称和任职日期
+          const nameMatches = [...mgrData.content.matchAll(/class="jlname"[^>]*>([^<]+)/g)];
+          const tenureMatches = [...mgrData.content.matchAll(/任职日期[^>]*>([^<]+)/g)];
+          const returnMatches = [...mgrData.content.matchAll(/任职回报[^>]*>([^<]+)/g)];
+          for (let i = 0; i < nameMatches.length; i++) {
+            const name = nameMatches[i][1].trim();
+            const tenure = tenureMatches[i]?.[1]?.trim() ?? "—";
+            const retStr = returnMatches[i]?.[1]?.replace(/%/g, "").trim();
+            result.managers.push({
+              name,
+              tenure,
+              tenureReturn: retStr ? parseFloat(retStr) : null,
+            });
+          }
+        } catch {
+          // 解析失败
+        }
+      }
+
       return result;
     },
     10 * 60 * 1000,
   ); // 缓存10分钟
+}
+
+// ==================== 计算辅助函数 ====================
+
+/** 计算最大回撤（返回负数，如 -15.3 表示最大回撤 15.3%） */
+function calcMaxDrawdown(navs: number[]): number | null {
+  if (navs.length < 2) return null;
+  let maxDrawdown = 0;
+  let peak = navs[0];
+  for (let i = 1; i < navs.length; i++) {
+    if (navs[i] > peak) {
+      peak = navs[i];
+    }
+    const drawdown = (navs[i] - peak) / peak;
+    if (drawdown < maxDrawdown) {
+      maxDrawdown = drawdown;
+    }
+  }
+  return Math.round(maxDrawdown * 10000) / 100; // 转为百分比，保留2位
+}
+
+/** 从净值走势计算月度收益率 */
+function calcMonthlyReturns(
+  allData: Array<{ x: number; y: number; equityReturn: number }>,
+): Array<{ year: number; month: number; returnRate: number }> {
+  if (allData.length < 2) return [];
+
+  // 按月分组，取每月最后一个交易日的净值
+  const monthEndNavs = new Map<string, { nav: number; prevNav: number }>();
+  let lastMonthKey = "";
+
+  for (const d of allData) {
+    const date = new Date(d.x);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    if (key !== lastMonthKey) {
+      // 新月份开始，记录月初净值（上月末净值）
+      if (lastMonthKey && monthEndNavs.has(lastMonthKey)) {
+        const prev = monthEndNavs.get(lastMonthKey)!;
+        prev.nav = d.y; // 更新上月末为当前月初
+      }
+      lastMonthKey = key;
+      monthEndNavs.set(key, { nav: d.y, prevNav: d.y });
+    } else {
+      const entry = monthEndNavs.get(key)!;
+      entry.nav = d.y;
+    }
+  }
+
+  // 计算每月收益率
+  const results: Array<{ year: number; month: number; returnRate: number }> = [];
+  const sortedKeys = [...monthEndNavs.keys()].sort();
+  for (let i = 1; i < sortedKeys.length; i++) {
+    const prevEntry = monthEndNavs.get(sortedKeys[i - 1])!;
+    const currEntry = monthEndNavs.get(sortedKeys[i])!;
+    const [yearStr, monthStr] = sortedKeys[i].split("-");
+    const returnRate =
+      prevEntry.nav > 0 ? ((currEntry.nav - prevEntry.nav) / prevEntry.nav) * 100 : 0;
+    results.push({
+      year: parseInt(yearStr),
+      month: parseInt(monthStr),
+      returnRate: Math.round(returnRate * 100) / 100,
+    });
+  }
+
+  return results;
 }

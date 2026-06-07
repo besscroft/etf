@@ -4,4 +4,7 @@ export default [
   index("routes/home.tsx"),
   route("api/market-data", "routes/api.market-data.ts"),
   route("fund/:code", "routes/fund.$code.tsx"),
+  route("cn/funds", "routes/compare.tsx"),
+  route("cn/fund", "routes/analysis.tsx"),
+  route("global/stable", "routes/stable.tsx"),
 ] satisfies RouteConfig;

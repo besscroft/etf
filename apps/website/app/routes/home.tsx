@@ -4,12 +4,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import {
-  TrendingUp,
   BarChart3,
   Search,
   Shield,
-  Globe,
-  AlertTriangle,
   ArrowRight,
   Activity,
   Gauge,
@@ -20,6 +17,8 @@ import {
   ArrowUpDown,
   ChevronUp,
   ChevronDown,
+  GitCompare,
+  TrendingUp,
 } from "lucide-react";
 import { getMarketData, type MarketData } from "~/lib/market-data";
 import { useState, useMemo } from "react";
@@ -128,13 +127,6 @@ function HeroSection({ data }: { data: MarketData }) {
 
   return (
     <section className="py-8 md:py-16">
-      <div className="mb-8 text-center md:mb-10">
-        <h1 className="mb-3 text-2xl font-bold tracking-tight md:text-4xl">ETFVoid</h1>
-        <p className="mx-auto max-w-xl text-sm text-muted-foreground md:text-base">
-          中国投资者的美股ETF与QDII基金追踪平台，覆盖纳斯达克100、标普500被动指数及主动型QDII基金
-        </p>
-      </div>
-
       <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4 md:gap-4">
         <MetricCard
           label="纳斯达克"
@@ -193,7 +185,7 @@ function MetricCard({
         : "text-foreground";
 
   return (
-    <Card>
+    <Card className="transition-shadow hover:shadow-md">
       <CardContent className="flex flex-col items-center gap-0.5 py-3 text-center sm:gap-1 sm:py-4">
         <span className="text-xs text-muted-foreground">{label}</span>
         <span className={`text-xl font-bold sm:text-2xl ${valueColor}`}>{value}</span>
@@ -219,7 +211,7 @@ function MarketIndicators({ data }: { data: MarketData }) {
       <SectionTitle title="市场情绪指标" />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 md:gap-4">
         {/* VIX */}
-        <Card>
+        <Card className="transition-shadow hover:shadow-md">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm md:text-base">
               <Activity className="size-4 text-amber-500" />
@@ -252,7 +244,7 @@ function MarketIndicators({ data }: { data: MarketData }) {
         </Card>
 
         {/* 恐慌贪婪指数 */}
-        <Card>
+        <Card className="transition-shadow hover:shadow-md">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm md:text-base">
               <Gauge className="size-4 text-orange-500" />
@@ -283,7 +275,7 @@ function MarketIndicators({ data }: { data: MarketData }) {
         </Card>
 
         {/* PE 分位 */}
-        <Card className="sm:col-span-2 lg:col-span-1">
+        <Card className="sm:col-span-2 lg:col-span-1 transition-shadow hover:shadow-md">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm md:text-base">
               <LineChart className="size-4 text-red-500" />
@@ -338,7 +330,7 @@ function MarketTemperature({ data }: { data: MarketData }) {
   return (
     <section className="mb-8 md:mb-10">
       <SectionTitle title="综合市场温度" />
-      <Card>
+      <Card className="transition-shadow hover:shadow-md">
         <CardHeader className="pb-2">
           <CardDescription>标普PE分位 + 恐慌贪婪 + VIX 三因子合并信号</CardDescription>
         </CardHeader>
@@ -428,16 +420,6 @@ function ToolboxSection() {
       <SectionTitle title="投资工具箱" />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 md:gap-4">
         <ToolCard
-          icon={<TrendingUp className="size-5" />}
-          title="美股分析"
-          description="波动率、RSI、布林带、周期阶段与年度/月度/周度涨幅，自动网格定投计划"
-          quickLinks={[
-            { label: "SPY", href: "/stock?t=SPY" },
-            { label: "QQQ", href: "/stock?t=QQQ" },
-            { label: "NVDA", href: "/stock?t=NVDA" },
-          ]}
-        />
-        <ToolCard
           icon={<Search className="size-5" />}
           title="基金对比"
           description="净值趋势、阶段收益、费率、风险（波动/回撤）、持仓与基金经理履历一览"
@@ -455,19 +437,6 @@ function ToolboxSection() {
           description="全球国债、投资级公司债与REITs，信用评级、最大回撤与入场指南"
           href="/global/stable"
           extra="美国国债 4.8% vs 国内存款 1.45%"
-        />
-        <ToolCard
-          icon={<Globe className="size-5" />}
-          title="跨市场对比"
-          description="美股、中国基金与港股ETF同框对比，10年收益曲线与风险指标并排"
-          href="/compare"
-          extra="美股/ETF vs 中国基金 vs 港股ETF"
-        />
-        <ToolCard
-          icon={<AlertTriangle className="size-5" />}
-          title="ETF溢价监控"
-          description="场内ETF溢价走势追踪，溢价预警与申购状态实时更新"
-          href="/qdii"
         />
       </div>
     </section>
@@ -691,6 +660,7 @@ function PremiumAlertSection({ data }: { data: MarketData }) {
                     >
                       规模 <SortIcon field="scale" />
                     </th>
+                    <th className="px-4 py-3 text-center font-medium">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -730,6 +700,26 @@ function PremiumAlertSection({ data }: { data: MarketData }) {
                       <td className="px-4 py-3 text-right text-xs text-muted-foreground">
                         {row.scale}
                       </td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <Link
+                            to={`/cn/fund?code=${row.code}`}
+                            className="inline-flex items-center gap-0.5 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                            title="分析"
+                          >
+                            <TrendingUp className="size-3" />
+                            <span className="hidden lg:inline">分析</span>
+                          </Link>
+                          <Link
+                            to={`/cn/funds?funds=${row.code}`}
+                            className="inline-flex items-center gap-0.5 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                            title="对比"
+                          >
+                            <GitCompare className="size-3" />
+                            <span className="hidden lg:inline">对比</span>
+                          </Link>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -739,9 +729,8 @@ function PremiumAlertSection({ data }: { data: MarketData }) {
             {/* 移动端卡片列表 */}
             <div className="md:hidden">
               {sorted.map((row) => (
-                <Link
+                <div
                   key={row.code}
-                  to={`/fund/${row.code}`}
                   className="block border-b last:border-b-0 px-3 py-3 transition-colors hover:bg-muted/50"
                 >
                   <div className="flex items-center justify-between">
@@ -770,7 +759,23 @@ function PremiumAlertSection({ data }: { data: MarketData }) {
                       规模 {row.scale}
                     </span>
                   </div>
-                </Link>
+                  <div className="mt-2 flex items-center justify-end gap-2">
+                    <Link
+                      to={`/cn/fund?code=${row.code}`}
+                      className="inline-flex items-center gap-1 rounded-sm border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                    >
+                      <TrendingUp className="size-3" />
+                      分析
+                    </Link>
+                    <Link
+                      to={`/cn/funds?funds=${row.code}`}
+                      className="inline-flex items-center gap-1 rounded-sm border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                    >
+                      <GitCompare className="size-3" />
+                      对比
+                    </Link>
+                  </div>
+                </div>
               ))}
             </div>
           </CardContent>
