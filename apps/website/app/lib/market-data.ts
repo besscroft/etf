@@ -675,8 +675,36 @@ export interface FundDetailData {
 
 /** 从东方财富pingzhongdata JS中提取基金详情 */
 export async function getFundDetailData(code: string): Promise<FundDetailData | null> {
-  // 先获取基础溢价数据
-  const basic = await getFundDetail(code);
+  // 先获取基础溢价数据（场内ETF）
+  let basic = await getFundDetail(code);
+
+  // 场内ETF找不到时，从东方财富基金排行接口获取场外基金基础信息
+  if (!basic) {
+    try {
+      const rankData = await fetchJson<FundRankResponse>(
+        `https://datacenter-web.eastmoney.com/api/data/v1/get?reportName=RPT_FUND_RANK&columns=SECURITY_CODE,FUND_NAME,FUND_SCALE,CHANGE_YEAR,CHANGE,PER_NAV,NAV_DATE,APPLY_RATE&filter=(SECURITY_CODE="${code}")&pageNumber=1&pageSize=1`,
+        { headers: { Referer: "https://fund.eastmoney.com/" } },
+      );
+      const items = rankData?.result?.data ?? [];
+      if (items.length > 0) {
+        const item = items[0];
+        const rawScale = numVal(item.FUND_SCALE);
+        basic = {
+          code: strVal(item.SECURITY_CODE),
+          name: strVal(item.FUND_NAME),
+          index: "—",
+          premium: 0,
+          price: numVal(item.PER_NAV, -999) === -999 ? 0 : numVal(item.PER_NAV),
+          changePercent: numVal(item.CHANGE, -999) === -999 ? 0 : numVal(item.CHANGE),
+          scale: rawScale > 0 ? `${Math.round((rawScale / 1e8) * 10) / 10}亿` : "—",
+          fee: numVal(item.APPLY_RATE, -999) === -999 ? "—" : `${numVal(item.APPLY_RATE)}%`,
+        };
+      }
+    } catch {
+      // 场外基金也查不到
+    }
+  }
+
   if (!basic) return null;
 
   return cachedFetch(
