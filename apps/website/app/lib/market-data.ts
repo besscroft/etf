@@ -668,16 +668,14 @@ export async function getFundDetailData(code: string): Promise<FundDetailData | 
           oneYear: syl1n?.[1] ? parseFloat(syl1n[1]) : null,
         };
 
-        // 净值走势（取近1年数据）
+        // 净值走势（全量数据，前端按时间范围过滤）
         const navMatch = pingzhongText.match(/Data_netWorthTrend\s*=\s*(\[[\s\S]*?\]);/);
         if (navMatch) {
           try {
             const allData: Array<{ x: number; y: number; equityReturn: number }> = JSON.parse(
               navMatch[1],
             );
-            // 取最近365个数据点
-            const recent = allData.slice(-365);
-            result.navTrend = recent.map((d) => ({
+            result.navTrend = allData.map((d) => ({
               date: new Date(d.x).toISOString().split("T")[0],
               nav: d.y,
               dailyReturn: d.equityReturn ?? 0,
