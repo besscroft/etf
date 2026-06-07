@@ -1,13 +1,778 @@
 import type { Route } from "./+types/home";
-import { Welcome } from "../welcome/welcome";
+import { useLoaderData } from "react-router";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
+import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
+import {
+  TrendingUp,
+  BarChart3,
+  Search,
+  Shield,
+  Globe,
+  AlertTriangle,
+  ArrowRight,
+  Activity,
+  Gauge,
+  LineChart,
+  Menu,
+  X,
+  RefreshCw,
+} from "lucide-react";
+import { getMarketData, type MarketData } from "~/lib/market-data";
+import { useState } from "react";
 
 export function meta(_args: Route.MetaArgs) {
   return [
-    { title: "New React Router App" },
-    { name: "description", content: "Welcome to React Router!" },
+    { title: "ETF Watch - 美股ETF与QDII基金追踪平台" },
+    {
+      name: "description",
+      content:
+        "覆盖纳斯达克100、标普500被动指数及主动型QDII基金，提供费率对比、溢价监控与申购状态追踪。",
+    },
   ];
 }
 
+export async function loader() {
+  const data = await getMarketData();
+  return data;
+}
+
 export default function Home() {
-  return <Welcome />;
+  const data = useLoaderData<typeof loader>();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Header
+        mobileMenuOpen={mobileMenuOpen}
+        onToggleMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
+      />
+      <main className="container mx-auto max-w-6xl px-3 pb-16 sm:px-4">
+        <HeroSection data={data} />
+        <MarketIndicators data={data} />
+        <MarketTemperature data={data} />
+        <ToolboxSection />
+        <PremiumAlertSection data={data} />
+      </main>
+      <Footer fetchedAt={data.fetchedAt} />
+    </div>
+  );
+}
+
+/* ==================== Header ==================== */
+
+function Header({
+  mobileMenuOpen,
+  onToggleMenu,
+}: {
+  mobileMenuOpen: boolean;
+  onToggleMenu: () => void;
+}) {
+  const navItems = ["首页", "估值", "懒人组合", "导出数据"];
+
+  return (
+    <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm">
+      <div className="container mx-auto flex max-w-6xl items-center justify-between px-3 py-3 sm:px-4">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="size-5 text-primary" />
+          <span className="text-lg font-semibold tracking-tight">ETF Watch</span>
+        </div>
+
+        {/* 桌面端导航 */}
+        <nav className="hidden items-center gap-1 md:flex">
+          {navItems.map((item) => (
+            <Button key={item} variant="ghost" size="sm">
+              {item}
+            </Button>
+          ))}
+        </nav>
+
+        {/* 移动端菜单按钮 */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="md:hidden"
+          onClick={onToggleMenu}
+          aria-label="菜单"
+        >
+          {mobileMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
+        </Button>
+      </div>
+
+      {/* 移动端下拉菜单 */}
+      {mobileMenuOpen && (
+        <nav className="border-t bg-background px-3 py-2 md:hidden">
+          {navItems.map((item) => (
+            <Button key={item} variant="ghost" size="sm" className="w-full justify-start">
+              {item}
+            </Button>
+          ))}
+        </nav>
+      )}
+    </header>
+  );
+}
+
+/* ==================== Hero 区域 ==================== */
+
+function HeroSection({ data }: { data: MarketData }) {
+  const avgPremium =
+    data.etfPremium.length > 0
+      ? Math.round(
+          (data.etfPremium.reduce((s, e) => s + e.premium, 0) / data.etfPremium.length) * 10,
+        ) / 10
+      : 0;
+
+  return (
+    <section className="py-8 md:py-16">
+      <div className="mb-8 text-center md:mb-10">
+        <h1 className="mb-3 text-2xl font-bold tracking-tight md:text-4xl">ETF Watch</h1>
+        <p className="mx-auto max-w-xl text-sm text-muted-foreground md:text-base">
+          中国投资者的美股ETF与QDII基金追踪平台，覆盖纳斯达克100、标普500被动指数及主动型QDII基金
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4 md:gap-4">
+        <MetricCard
+          label="纳斯达克"
+          value={data.nasdaq.price ? data.nasdaq.price.toLocaleString() : "—"}
+          sub={formatChange(data.nasdaq.changePercent)}
+          trend={getTrend(data.nasdaq.changePercent)}
+          highlight
+        />
+        <MetricCard
+          label="标普500"
+          value={data.sp500.price ? data.sp500.price.toLocaleString() : "—"}
+          sub={formatChange(data.sp500.changePercent)}
+          trend={getTrend(data.sp500.changePercent)}
+          highlight
+        />
+        <MetricCard
+          label="道琼斯"
+          value={data.dowJones.price ? data.dowJones.price.toLocaleString() : "—"}
+          sub={formatChange(data.dowJones.changePercent)}
+          trend={getTrend(data.dowJones.changePercent)}
+          highlight
+        />
+        <MetricCard
+          label="ETF均溢价"
+          value={avgPremium > 0 ? `${avgPremium}%` : "—"}
+          sub="当前"
+          trend="neutral"
+          warning={avgPremium > 2}
+        />
+      </div>
+    </section>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  sub,
+  trend,
+  highlight,
+  warning,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  trend: "up" | "down" | "neutral";
+  highlight?: boolean;
+  warning?: boolean;
+}) {
+  const valueColor = warning
+    ? "text-amber-500"
+    : trend === "up"
+      ? "text-emerald-500"
+      : trend === "down"
+        ? "text-red-500"
+        : "text-foreground";
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col items-center gap-0.5 py-3 text-center sm:gap-1 sm:py-4">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className={`text-xl font-bold sm:text-2xl ${valueColor}`}>{value}</span>
+        <span className="text-xs text-muted-foreground">{sub}</span>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ==================== 市场情绪指标 ==================== */
+
+function MarketIndicators({ data }: { data: MarketData }) {
+  // VIX 等级判定
+  const vixLevel = getVixLevel(data.vix.value);
+  // 恐慌贪婪等级
+  const fgLevel = getFearGreedLevel(data.fearGreed.value);
+  // PE 分位（基于历史分位估算，PE > 30 为高估区间）
+  const pePercentile = data.sp500PE.value ? estimatePePercentile(data.sp500PE.value) : null;
+  const peLevel = getPeLevel(pePercentile);
+
+  return (
+    <section className="mb-8 md:mb-10">
+      <SectionTitle title="市场情绪指标" />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 md:gap-4">
+        {/* VIX */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+              <Activity className="size-4 text-amber-500" />
+              VIX 恐慌指数
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-2 flex items-end gap-2">
+              <span className="text-2xl font-bold md:text-3xl">{data.vix.value || "—"}</span>
+              <Badge variant={vixLevel.badgeVariant}>{vixLevel.label}</Badge>
+            </div>
+            <div className="relative mb-1 h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-emerald-500 via-amber-500 to-red-500"
+                style={{ width: `${Math.min(100, (data.vix.value / 40) * 100)}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>0 平静</span>
+              <span>20</span>
+              <span>40 恐慌</span>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              CBOE官方 ·{" "}
+              {data.vix.changePercent !== null
+                ? formatChange(data.vix.changePercent) + " 今日"
+                : "—"}
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* 恐慌贪婪指数 */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+              <Gauge className="size-4 text-orange-500" />
+              市场情绪指数
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-2 flex items-end gap-2">
+              <span className="text-2xl font-bold md:text-3xl">{data.fearGreed.value || "—"}</span>
+              <Badge variant={fgLevel.badgeVariant}>{fgLevel.label}</Badge>
+            </div>
+            <div className="relative mb-1 h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-red-500 via-amber-500 to-emerald-500"
+                style={{ width: `${data.fearGreed.value}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>0 极度恐慌</span>
+              <span>50</span>
+              <span>100 极度贪婪</span>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              基于 VIX + 标普500 + 纳斯达克 综合计算
+              {data.fearGreed.previousClose !== null && ` · 昨收 ${data.fearGreed.previousClose}`}
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* PE 分位 */}
+        <Card className="sm:col-span-2 lg:col-span-1">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+              <LineChart className="size-4 text-red-500" />
+              标普500 PE分位
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-2 flex items-end gap-2">
+              <span className="text-2xl font-bold md:text-3xl">
+                {data.sp500PE.value ? `${data.sp500PE.value}x` : "—"}
+              </span>
+              <Badge variant={peLevel.badgeVariant}>{peLevel.label}</Badge>
+            </div>
+            <div className="relative mb-1 h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-emerald-500 via-amber-500 to-red-500"
+                style={{ width: `${pePercentile ?? 50}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>0 低估</span>
+              <span>50</span>
+              <span>100 高估</span>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              历史{pePercentile ?? "—"}%分位 · 来源 {data.sp500PE.source}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    </section>
+  );
+}
+
+/* ==================== 综合市场温度 ==================== */
+
+function MarketTemperature({ data }: { data: MarketData }) {
+  const pePercentile = data.sp500PE.value ? estimatePePercentile(data.sp500PE.value) : 50;
+  const fgScore = data.fearGreed.value;
+  const vixScore = data.vix.value;
+
+  // 综合温度计算：PE分位权重40% + 恐慌贪婪(反转)权重30% + VIX权重30%
+  // PE分位越高越危险；恐慌贪婪越低越恐慌(机会)；VIX越高越恐慌
+  const tempScore =
+    pePercentile * 0.4 + (100 - fgScore) * 0.3 + Math.min(100, (vixScore / 40) * 100) * 0.3;
+
+  const tempLabel = getTemperatureLabel(tempScore);
+  const tempColor = getTemperatureColor(tempScore);
+  const fgLevel = getFearGreedLevel(fgScore);
+  const vixLevel = getVixLevel(vixScore);
+
+  return (
+    <section className="mb-8 md:mb-10">
+      <SectionTitle title="综合市场温度" />
+      <Card>
+        <CardHeader className="pb-2">
+          <CardDescription>标普PE分位 + 恐慌贪婪 + VIX 三因子合并信号</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-3 flex items-center gap-3">
+            <span className={`text-xl font-bold md:text-2xl ${tempColor}`}>{tempLabel}</span>
+          </div>
+          {/* 温度条 */}
+          <div className="relative mb-2 h-3 w-full overflow-hidden rounded-full md:h-4">
+            <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 via-amber-400 to-red-500" />
+            <div
+              className="absolute top-0 h-full w-0.5 -translate-x-1/2 bg-foreground shadow-sm"
+              style={{ left: `${tempScore}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>机会区</span>
+            <span>中性</span>
+            <span>危险区</span>
+          </div>
+
+          {/* 因子明细 */}
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3">
+            <TempFactor
+              label="标普500 PE"
+              value={data.sp500PE.value ? `${data.sp500PE.value}x` : "—"}
+              status={pePercentile > 80 ? "极度高估" : pePercentile > 60 ? "偏高" : "合理"}
+              level={pePercentile > 80 ? "danger" : pePercentile > 60 ? "neutral" : "opportunity"}
+            />
+            <TempFactor
+              label="恐慌贪婪"
+              value={`${fgScore}分`}
+              status={fgLevel.label}
+              level={fgScore < 30 ? "opportunity" : fgScore > 70 ? "danger" : "neutral"}
+            />
+            <TempFactor
+              label="VIX 波动"
+              value={`${vixScore}`}
+              status={vixLevel.label}
+              level={vixScore > 25 ? "opportunity" : vixScore < 15 ? "danger" : "neutral"}
+            />
+          </div>
+
+          <p className="mt-4 text-xs text-muted-foreground">
+            {tempScore > 65
+              ? "市场偏热，注意控制仓位和止损"
+              : tempScore < 35
+                ? "市场偏冷，可关注逢低布局机会"
+                : "信号混合，维持正常仓位，注意止损"}
+          </p>
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+function TempFactor({
+  label,
+  value,
+  status,
+  level,
+}: {
+  label: string;
+  value: string;
+  status: string;
+  level: "opportunity" | "neutral" | "danger";
+}) {
+  const colorMap = {
+    opportunity: "text-emerald-500",
+    neutral: "text-amber-500",
+    danger: "text-red-500",
+  };
+  return (
+    <div className="rounded-md border p-2 text-center">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-sm font-semibold">{value}</div>
+      <div className={`text-xs ${colorMap[level]}`}>{status}</div>
+    </div>
+  );
+}
+
+/* ==================== 投资工具箱 ==================== */
+
+function ToolboxSection() {
+  return (
+    <section className="mb-8 md:mb-10">
+      <SectionTitle title="投资工具箱" />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 md:gap-4">
+        <ToolCard
+          icon={<TrendingUp className="size-5" />}
+          title="美股分析"
+          description="波动率、RSI、布林带、周期阶段与年度/月度/周度涨幅，自动网格定投计划"
+          quickLinks={[
+            { label: "SPY", href: "/stock?t=SPY" },
+            { label: "QQQ", href: "/stock?t=QQQ" },
+            { label: "NVDA", href: "/stock?t=NVDA" },
+          ]}
+        />
+        <ToolCard
+          icon={<Search className="size-5" />}
+          title="基金对比"
+          description="净值趋势、阶段收益、费率、风险（波动/回撤）、持仓与基金经理履历一览"
+          href="/cn/funds"
+        />
+        <ToolCard
+          icon={<BarChart3 className="size-5" />}
+          title="基金分析"
+          description="单基金深度分析：净值走势、全周期收益、最大回撤、月度热力图与经理履历"
+          href="/cn/fund"
+        />
+        <ToolCard
+          icon={<Shield className="size-5" />}
+          title="稳健收益"
+          description="全球国债、投资级公司债与REITs，信用评级、最大回撤与入场指南"
+          href="/global/stable"
+          extra="美国国债 4.8% vs 国内存款 1.45%"
+        />
+        <ToolCard
+          icon={<Globe className="size-5" />}
+          title="跨市场对比"
+          description="美股、中国基金与港股ETF同框对比，10年收益曲线与风险指标并排"
+          href="/compare"
+          extra="美股/ETF vs 中国基金 vs 港股ETF"
+        />
+        <ToolCard
+          icon={<AlertTriangle className="size-5" />}
+          title="ETF溢价监控"
+          description="场内ETF溢价走势追踪，溢价预警与申购状态实时更新"
+          href="/qdii"
+        />
+      </div>
+    </section>
+  );
+}
+
+function ToolCard({
+  icon,
+  title,
+  description,
+  href,
+  quickLinks,
+  extra,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  href?: string;
+  quickLinks?: { label: string; href: string }[];
+  extra?: string;
+}) {
+  return (
+    <Card className="transition-shadow hover:shadow-md">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+          <span className="text-primary">{icon}</span>
+          {title}
+        </CardTitle>
+        <CardDescription className="min-h-[2.5rem] text-xs md:text-sm">
+          {description}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {extra && <p className="mb-3 text-xs text-muted-foreground">{extra}</p>}
+        {quickLinks && (
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {quickLinks.map((link) => (
+              <a
+                key={link.label}
+                href={link.href}
+                className="rounded-sm bg-muted px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+              >
+                {link.label}
+              </a>
+            ))}
+          </div>
+        )}
+        {href && (
+          <Button variant="outline" size="sm" className="w-full" asChild>
+            <a href={href}>
+              进入
+              <ArrowRight className="ml-1 size-3" />
+            </a>
+          </Button>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ==================== ETF 溢价预警 ==================== */
+
+function PremiumAlertSection({ data }: { data: MarketData }) {
+  const etfList = data.etfPremium;
+
+  return (
+    <section className="mb-8 md:mb-10">
+      <SectionTitle title="ETF 溢价预警" />
+      <p className="mb-3 text-xs text-muted-foreground md:mb-4">
+        溢价 &gt;1% 注意 · &gt;2% 偏高 · &gt;3% 极高建议等待收窄
+      </p>
+
+      {etfList.length === 0 ? (
+        <Card>
+          <CardContent className="py-8 text-center">
+            <RefreshCw className="mx-auto mb-2 size-6 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">暂时无法获取ETF溢价数据，请稍后刷新</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            {/* 桌面端表格 */}
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-xs text-muted-foreground">
+                    <th className="px-4 py-3 text-left font-medium">代码</th>
+                    <th className="px-4 py-3 text-left font-medium">名称</th>
+                    <th className="px-4 py-3 text-left font-medium">跟踪指数</th>
+                    <th className="px-4 py-3 text-right font-medium">溢价率</th>
+                    <th className="px-4 py-3 text-right font-medium">涨跌幅</th>
+                    <th className="px-4 py-3 text-right font-medium">规模</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {etfList
+                    .sort((a, b) => b.premium - a.premium)
+                    .map((row) => (
+                      <tr
+                        key={row.code}
+                        className="border-b last:border-b-0 transition-colors hover:bg-muted/50"
+                      >
+                        <td className="px-4 py-3 font-mono text-xs">{row.code}</td>
+                        <td className="px-4 py-3 text-xs">{row.name}</td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">{row.index}</td>
+                        <td className="px-4 py-3 text-right">
+                          <PremiumBadge value={row.premium} />
+                        </td>
+                        <td
+                          className={`px-4 py-3 text-right text-xs ${
+                            row.changePercent > 0
+                              ? "text-emerald-500"
+                              : row.changePercent < 0
+                                ? "text-red-500"
+                                : ""
+                          }`}
+                        >
+                          {formatChange(row.changePercent)}
+                        </td>
+                        <td className="px-4 py-3 text-right text-xs text-muted-foreground">
+                          {row.scale}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 移动端卡片列表 */}
+            <div className="md:hidden">
+              {etfList
+                .sort((a, b) => b.premium - a.premium)
+                .map((row) => (
+                  <div key={row.code} className="border-b last:border-b-0 px-3 py-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-mono text-xs text-muted-foreground">{row.code}</span>
+                        <span className="ml-2 text-sm">{row.name}</span>
+                      </div>
+                      <PremiumBadge value={row.premium} />
+                    </div>
+                    <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{row.index}</span>
+                      <span>
+                        涨跌{" "}
+                        <span
+                          className={
+                            row.changePercent > 0
+                              ? "text-emerald-500"
+                              : row.changePercent < 0
+                                ? "text-red-500"
+                                : ""
+                          }
+                        >
+                          {formatChange(row.changePercent)}
+                        </span>
+                        {" · "}
+                        规模 {row.scale}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </section>
+  );
+}
+
+function PremiumBadge({ value }: { value: number }) {
+  if (value >= 3) {
+    return (
+      <Badge variant="destructive" className="text-xs">
+        +{value}% 极高
+      </Badge>
+    );
+  }
+  if (value >= 2) {
+    return (
+      <Badge className="bg-amber-500/10 text-amber-600 text-xs dark:bg-amber-500/20 dark:text-amber-400">
+        +{value}% 偏高
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="secondary" className="text-xs">
+      +{value}%
+    </Badge>
+  );
+}
+
+/* ==================== Footer ==================== */
+
+function Footer({ fetchedAt }: { fetchedAt: string }) {
+  const time = new Date(fetchedAt);
+  const timeStr = time.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return (
+    <footer className="border-t py-6 md:py-8">
+      <div className="container mx-auto max-w-6xl px-3 text-center text-xs text-muted-foreground sm:px-4">
+        <p className="mb-2">ETF Watch · 中国投资者的美股ETF与QDII基金追踪平台</p>
+        <p className="mb-1">
+          数据更新于 {timeStr} · 数据来源: 新浪财经 / CBOE / multpl.com / 东方财富
+        </p>
+        <p>数据仅供参考，不构成投资建议。历史规律不能预测未来，投资有风险，入市需谨慎。</p>
+      </div>
+    </footer>
+  );
+}
+
+/* ==================== 通用组件 ==================== */
+
+function SectionTitle({ title }: { title: string }) {
+  return <h2 className="mb-3 text-lg font-semibold tracking-tight md:mb-4 md:text-xl">{title}</h2>;
+}
+
+/* ==================== 工具函数 ==================== */
+
+/** 格式化涨跌幅 */
+function formatChange(value: number | null): string {
+  if (value === null || value === undefined) return "—";
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value}%`;
+}
+
+/** 判断涨跌趋势 */
+function getTrend(value: number | null): "up" | "down" | "neutral" {
+  if (value === null || value === 0) return "neutral";
+  return value > 0 ? "up" : "down";
+}
+
+/** VIX 等级判定 */
+function getVixLevel(vix: number) {
+  if (vix <= 15) return { label: "市场平静", badgeVariant: "secondary" as const };
+  if (vix <= 20) return { label: "正常波动", badgeVariant: "secondary" as const };
+  if (vix <= 25) return { label: "市场警惕", badgeVariant: "destructive" as const };
+  return { label: "极度恐慌", badgeVariant: "destructive" as const };
+}
+
+/** 恐慌贪婪等级 */
+function getFearGreedLevel(score: number) {
+  if (score <= 25) return { label: "极度恐慌", badgeVariant: "destructive" as const };
+  if (score <= 45) return { label: "恐慌", badgeVariant: "destructive" as const };
+  if (score <= 55) return { label: "中性", badgeVariant: "secondary" as const };
+  if (score <= 75) return { label: "贪婪", badgeVariant: "default" as const };
+  return { label: "极度贪婪", badgeVariant: "default" as const };
+}
+
+/** PE 分位等级 */
+function getPeLevel(percentile: number | null) {
+  if (percentile === null) return { label: "数据缺失", badgeVariant: "secondary" as const };
+  if (percentile <= 20) return { label: "低估", badgeVariant: "secondary" as const };
+  if (percentile <= 40) return { label: "合理偏低", badgeVariant: "secondary" as const };
+  if (percentile <= 60) return { label: "合理", badgeVariant: "secondary" as const };
+  if (percentile <= 80) return { label: "偏高", badgeVariant: "destructive" as const };
+  return { label: "极度高估", badgeVariant: "destructive" as const };
+}
+
+/** 根据PE值估算历史分位（基于标普500历史PE分布） */
+function estimatePePercentile(pe: number): number {
+  // 标普500 PE历史中位数约16-17，当前偏高
+  // 使用简化的正态分布估算
+  const median = 17;
+  const stdDev = 6;
+  // 简化的累积分布函数估算
+  const z = (pe - median) / stdDev;
+  const percentile = Math.round(normalCDF(z) * 100);
+  return Math.max(0, Math.min(100, percentile));
+}
+
+/** 标准正态分布累积分布函数近似 */
+function normalCDF(z: number): number {
+  // Abramowitz and Stegun 近似
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const p = 0.3275911;
+
+  const sign = z < 0 ? -1 : 1;
+  const x = Math.abs(z) / Math.SQRT2;
+  const t = 1 / (1 + p * x);
+  const y = 1 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+  return 0.5 * (1 + sign * y);
+}
+
+/** 综合温度标签 */
+function getTemperatureLabel(score: number): string {
+  if (score <= 25) return "极度恐慌·机会区";
+  if (score <= 40) return "偏冷·可布局";
+  if (score <= 60) return "中性偏谨慎";
+  if (score <= 75) return "偏热·注意风险";
+  return "极度贪婪·危险区";
+}
+
+/** 综合温度颜色 */
+function getTemperatureColor(score: number): string {
+  if (score <= 25) return "text-emerald-500";
+  if (score <= 40) return "text-emerald-400";
+  if (score <= 60) return "text-amber-500";
+  if (score <= 75) return "text-orange-500";
+  return "text-red-500";
 }
