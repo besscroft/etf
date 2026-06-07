@@ -1,5 +1,5 @@
 import type { Route } from "./+types/home";
-import { useLoaderData } from "react-router";
+import { useLoaderData, Link } from "react-router";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -17,13 +17,16 @@ import {
   Menu,
   X,
   RefreshCw,
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { getMarketData, type MarketData } from "~/lib/market-data";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 export function meta(_args: Route.MetaArgs) {
   return [
-    { title: "ETF Watch - 美股ETF与QDII基金追踪平台" },
+    { title: "ETFVoid - 美股ETF与QDII基金追踪平台" },
     {
       name: "description",
       content:
@@ -75,7 +78,7 @@ function Header({
       <div className="container mx-auto flex max-w-6xl items-center justify-between px-3 py-3 sm:px-4">
         <div className="flex items-center gap-2">
           <BarChart3 className="size-5 text-primary" />
-          <span className="text-lg font-semibold tracking-tight">ETF Watch</span>
+          <span className="text-lg font-semibold tracking-tight">ETFVoid</span>
         </div>
 
         {/* 桌面端导航 */}
@@ -126,7 +129,7 @@ function HeroSection({ data }: { data: MarketData }) {
   return (
     <section className="py-8 md:py-16">
       <div className="mb-8 text-center md:mb-10">
-        <h1 className="mb-3 text-2xl font-bold tracking-tight md:text-4xl">ETF Watch</h1>
+        <h1 className="mb-3 text-2xl font-bold tracking-tight md:text-4xl">ETFVoid</h1>
         <p className="mx-auto max-w-xl text-sm text-muted-foreground md:text-base">
           中国投资者的美股ETF与QDII基金追踪平台，覆盖纳斯达克100、标普500被动指数及主动型QDII基金
         </p>
@@ -487,7 +490,7 @@ function ToolCard({
   extra?: string;
 }) {
   return (
-    <Card className="transition-shadow hover:shadow-md">
+    <Card className="flex flex-col transition-shadow hover:shadow-md">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm md:text-base">
           <span className="text-primary">{icon}</span>
@@ -497,7 +500,7 @@ function ToolCard({
           {description}
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="mt-auto">
         {extra && <p className="mb-3 text-xs text-muted-foreground">{extra}</p>}
         {quickLinks && (
           <div className="mb-3 flex flex-wrap gap-1.5">
@@ -527,14 +530,112 @@ function ToolCard({
 
 /* ==================== ETF 溢价预警 ==================== */
 
+/** 排序字段类型 */
+type SortField = "premium" | "changePercent" | "name" | "code" | "scale";
+type SortDir = "asc" | "desc";
+
 function PremiumAlertSection({ data }: { data: MarketData }) {
   const etfList = data.etfPremium;
+  const [sortField, setSortField] = useState<SortField>("premium");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // 搜索过滤
+  const filtered = useMemo(() => {
+    if (!searchQuery.trim()) return etfList;
+    const q = searchQuery.trim().toLowerCase();
+    return etfList.filter(
+      (e) => e.code.toLowerCase().includes(q) || e.name.toLowerCase().includes(q),
+    );
+  }, [etfList, searchQuery]);
+
+  // 排序
+  const sorted = useMemo(() => {
+    const list = [...filtered];
+    list.sort((a, b) => {
+      let va: number | string;
+      let vb: number | string;
+      switch (sortField) {
+        case "premium":
+          va = a.premium;
+          vb = b.premium;
+          break;
+        case "changePercent":
+          va = a.changePercent;
+          vb = b.changePercent;
+          break;
+        case "name":
+          va = a.name;
+          vb = b.name;
+          break;
+        case "code":
+          va = a.code;
+          vb = b.code;
+          break;
+        case "scale":
+          // 从规模字符串提取数字（如"12.3亿"→12.3）
+          va = parseFloat(a.scale) || 0;
+          vb = parseFloat(b.scale) || 0;
+          break;
+        default:
+          va = a.premium;
+          vb = b.premium;
+      }
+      if (typeof va === "string" && typeof vb === "string") {
+        return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
+      }
+      return sortDir === "asc" ? (va as number) - (vb as number) : (vb as number) - (va as number);
+    });
+    return list;
+  }, [filtered, sortField, sortDir]);
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      // 溢价率和涨跌幅默认降序，名称和代码默认升序
+      setSortDir(field === "name" || field === "code" ? "asc" : "desc");
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="ml-1 inline size-3 opacity-30" />;
+    }
+    return sortDir === "asc" ? (
+      <ChevronUp className="ml-1 inline size-3" />
+    ) : (
+      <ChevronDown className="ml-1 inline size-3" />
+    );
+  };
 
   return (
     <section className="mb-8 md:mb-10">
       <SectionTitle title="ETF 溢价预警" />
+
+      {/* 搜索栏 */}
+      <div className="mb-3 flex items-center gap-2 md:mb-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="搜索基金代码或名称..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-9 w-full rounded-md border bg-background pl-9 pr-3 text-sm outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+        {searchQuery && (
+          <span className="text-xs text-muted-foreground whitespace-nowrap">
+            {filtered.length}/{etfList.length} 只
+          </span>
+        )}
+      </div>
+
       <p className="mb-3 text-xs text-muted-foreground md:mb-4">
         溢价 &gt;1% 注意 · &gt;2% 偏高 · &gt;3% 极高建议等待收窄
+        {searchQuery && filtered.length === 0 && " · 未找到匹配基金"}
       </p>
 
       {etfList.length === 0 ? (
@@ -542,6 +643,13 @@ function PremiumAlertSection({ data }: { data: MarketData }) {
           <CardContent className="py-8 text-center">
             <RefreshCw className="mx-auto mb-2 size-6 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">暂时无法获取ETF溢价数据，请稍后刷新</p>
+          </CardContent>
+        </Card>
+      ) : filtered.length === 0 ? (
+        <Card>
+          <CardContent className="py-8 text-center">
+            <Search className="mx-auto mb-2 size-6 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">未找到匹配 "{searchQuery}" 的基金</p>
           </CardContent>
         </Card>
       ) : (
@@ -552,82 +660,118 @@ function PremiumAlertSection({ data }: { data: MarketData }) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-xs text-muted-foreground">
-                    <th className="px-4 py-3 text-left font-medium">代码</th>
-                    <th className="px-4 py-3 text-left font-medium">名称</th>
+                    <th
+                      className="cursor-pointer px-4 py-3 text-left font-medium select-none hover:text-foreground"
+                      onClick={() => toggleSort("code")}
+                    >
+                      代码 <SortIcon field="code" />
+                    </th>
+                    <th
+                      className="cursor-pointer px-4 py-3 text-left font-medium select-none hover:text-foreground"
+                      onClick={() => toggleSort("name")}
+                    >
+                      名称 <SortIcon field="name" />
+                    </th>
                     <th className="px-4 py-3 text-left font-medium">跟踪指数</th>
-                    <th className="px-4 py-3 text-right font-medium">溢价率</th>
-                    <th className="px-4 py-3 text-right font-medium">涨跌幅</th>
-                    <th className="px-4 py-3 text-right font-medium">规模</th>
+                    <th
+                      className="cursor-pointer px-4 py-3 text-right font-medium select-none hover:text-foreground"
+                      onClick={() => toggleSort("premium")}
+                    >
+                      溢价率 <SortIcon field="premium" />
+                    </th>
+                    <th
+                      className="cursor-pointer px-4 py-3 text-right font-medium select-none hover:text-foreground"
+                      onClick={() => toggleSort("changePercent")}
+                    >
+                      涨跌幅 <SortIcon field="changePercent" />
+                    </th>
+                    <th
+                      className="cursor-pointer px-4 py-3 text-right font-medium select-none hover:text-foreground"
+                      onClick={() => toggleSort("scale")}
+                    >
+                      规模 <SortIcon field="scale" />
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {etfList
-                    .sort((a, b) => b.premium - a.premium)
-                    .map((row) => (
-                      <tr
-                        key={row.code}
-                        className="border-b last:border-b-0 transition-colors hover:bg-muted/50"
-                      >
-                        <td className="px-4 py-3 font-mono text-xs">{row.code}</td>
-                        <td className="px-4 py-3 text-xs">{row.name}</td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{row.index}</td>
-                        <td className="px-4 py-3 text-right">
-                          <PremiumBadge value={row.premium} />
-                        </td>
-                        <td
-                          className={`px-4 py-3 text-right text-xs ${
-                            row.changePercent > 0
-                              ? "text-emerald-500"
-                              : row.changePercent < 0
-                                ? "text-red-500"
-                                : ""
-                          }`}
+                  {sorted.map((row) => (
+                    <tr
+                      key={row.code}
+                      className="border-b last:border-b-0 transition-colors hover:bg-muted/50"
+                    >
+                      <td className="px-4 py-3 font-mono text-xs">
+                        <Link to={`/fund/${row.code}`} className="text-primary hover:underline">
+                          {row.code}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        <Link
+                          to={`/fund/${row.code}`}
+                          className="hover:text-primary hover:underline"
                         >
-                          {formatChange(row.changePercent)}
-                        </td>
-                        <td className="px-4 py-3 text-right text-xs text-muted-foreground">
-                          {row.scale}
-                        </td>
-                      </tr>
-                    ))}
+                          {row.name}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{row.index}</td>
+                      <td className="px-4 py-3 text-right">
+                        <PremiumBadge value={row.premium} />
+                      </td>
+                      <td
+                        className={`px-4 py-3 text-right text-xs ${
+                          row.changePercent > 0
+                            ? "text-emerald-500"
+                            : row.changePercent < 0
+                              ? "text-red-500"
+                              : ""
+                        }`}
+                      >
+                        {formatChange(row.changePercent)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-xs text-muted-foreground">
+                        {row.scale}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
 
             {/* 移动端卡片列表 */}
             <div className="md:hidden">
-              {etfList
-                .sort((a, b) => b.premium - a.premium)
-                .map((row) => (
-                  <div key={row.code} className="border-b last:border-b-0 px-3 py-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="font-mono text-xs text-muted-foreground">{row.code}</span>
-                        <span className="ml-2 text-sm">{row.name}</span>
-                      </div>
-                      <PremiumBadge value={row.premium} />
+              {sorted.map((row) => (
+                <Link
+                  key={row.code}
+                  to={`/fund/${row.code}`}
+                  className="block border-b last:border-b-0 px-3 py-3 transition-colors hover:bg-muted/50"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-mono text-xs text-muted-foreground">{row.code}</span>
+                      <span className="ml-2 text-sm">{row.name}</span>
                     </div>
-                    <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{row.index}</span>
-                      <span>
-                        涨跌{" "}
-                        <span
-                          className={
-                            row.changePercent > 0
-                              ? "text-emerald-500"
-                              : row.changePercent < 0
-                                ? "text-red-500"
-                                : ""
-                          }
-                        >
-                          {formatChange(row.changePercent)}
-                        </span>
-                        {" · "}
-                        规模 {row.scale}
-                      </span>
-                    </div>
+                    <PremiumBadge value={row.premium} />
                   </div>
-                ))}
+                  <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{row.index}</span>
+                    <span>
+                      涨跌{" "}
+                      <span
+                        className={
+                          row.changePercent > 0
+                            ? "text-emerald-500"
+                            : row.changePercent < 0
+                              ? "text-red-500"
+                              : ""
+                        }
+                      >
+                        {formatChange(row.changePercent)}
+                      </span>
+                      {" · "}
+                      规模 {row.scale}
+                    </span>
+                  </div>
+                </Link>
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -672,7 +816,7 @@ function Footer({ fetchedAt }: { fetchedAt: string }) {
   return (
     <footer className="border-t py-6 md:py-8">
       <div className="container mx-auto max-w-6xl px-3 text-center text-xs text-muted-foreground sm:px-4">
-        <p className="mb-2">ETF Watch · 中国投资者的美股ETF与QDII基金追踪平台</p>
+        <p className="mb-2">ETFVoid · 中国投资者的美股ETF与QDII基金追踪平台</p>
         <p className="mb-1">
           数据更新于 {timeStr} · 数据来源: 新浪财经 / CBOE / multpl.com / 东方财富
         </p>

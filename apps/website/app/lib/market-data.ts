@@ -570,3 +570,18 @@ export async function getMarketData(): Promise<MarketData> {
     fetchedAt: new Date().toISOString(),
   };
 }
+
+/** 获取单个ETF基金详情 */
+export async function getFundDetail(code: string): Promise<{
+  code: string;
+  name: string;
+  index: string;
+  premium: number;
+  price: number;
+  changePercent: number;
+  scale: string;
+  fee: string;
+} | null> {
+  const all = await getETFPremiumData();
+  return all.find((e) => e.code === code) ?? null;
+}
