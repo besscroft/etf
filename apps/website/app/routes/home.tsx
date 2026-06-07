@@ -90,10 +90,10 @@ function Header({
 }) {
   const navItems = [
     { label: "首页", href: "/" },
-    { label: "纳指被动", href: "/cn/funds?funds=513100,513110,159941,513300,159659" },
-    { label: "标普500", href: "/cn/funds?funds=513500,159612,513650" },
-    { label: "场内ETF", href: "/cn/fund" },
-    { label: "美股主动", href: "/cn/funds?funds=000934,050025,040018" },
+    { label: "纳指被动", href: "/nasdaq" },
+    { label: "标普500", href: "/sp500" },
+    { label: "场内ETF", href: "/etf" },
+    { label: "美股主动", href: "/active" },
   ];
 
   return (

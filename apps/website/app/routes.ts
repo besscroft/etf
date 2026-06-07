@@ -7,4 +7,8 @@ export default [
   route("cn/funds", "routes/compare.tsx"),
   route("cn/fund", "routes/analysis.tsx"),
   route("global/stable", "routes/stable.tsx"),
+  route("nasdaq", "routes/nasdaq.tsx"),
+  route("sp500", "routes/sp500.tsx"),
+  route("etf", "routes/etf.tsx"),
+  route("active", "routes/active.tsx"),
 ] satisfies RouteConfig;

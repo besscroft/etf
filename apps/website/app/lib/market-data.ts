@@ -957,3 +957,243 @@ function calcMonthlyReturns(
 
   return results;
 }
+
+// ==================== 场外基金排行数据（东方财富 datacenter-web） ====================
+
+/** 场外基金数据 */
+export interface OTCFundData {
+  /** 基金代码 */
+  code: string;
+  /** 基金名称 */
+  name: string;
+  /** 基金规模（亿元） */
+  scale: number;
+  /** 近1年收益率(%) */
+  returnOneYear: number | null;
+  /** 近6月收益率(%) */
+  returnSixMonth: number | null;
+  /** 近3月收益率(%) */
+  returnThreeMonth: number | null;
+  /** 近1月收益率(%) */
+  returnOneMonth: number | null;
+  /** 昨日涨跌(%) */
+  changeDaily: number | null;
+  /** 成立以来收益率(%) */
+  returnSinceInception: number | null;
+  /** 单位净值 */
+  nav: number | null;
+  /** 净值日期 */
+  navDate: string;
+  /** 申购费率(%) */
+  purchaseRate: number | null;
+  /** 申购状态 */
+  purchaseStatus: string;
+  /** 申购限额 */
+  purchaseLimit: string;
+}
+
+/** 东方财富 RPT_FUND_RANK 响应 */
+interface FundRankResponse {
+  result?: {
+    data?: Array<Record<string, unknown>>;
+  };
+  success?: boolean;
+}
+
+/**
+ * 纳指100场外基金代码列表
+ * 来源：wise-etf.com/nasdaq 参考的天天基金网数据
+ */
+const NASDAQ_100_OTC_CODES = [
+  "017091", // 景顺长城纳斯达克科技市值加权ETF联接A
+  "019172", // 摩根纳斯达克100指数(QDII)A
+  "160213", // 国泰纳斯达克100指数(QDII)
+  "018043", // 天弘纳斯达克100指数(QDII)A
+  "016055", // 博时纳斯达克100ETF联接(QDII)A
+  "016452", // 南方纳斯达克100指数(QDII)A
+  "019736", // 宝盈纳斯达克100指数(QDII)A
+  "270042", // 广发纳斯达克100ETF联接(QDII)
+  "019441", // 万家纳斯达克100指数发起式(QDII)
+  "000834", // 大成纳斯达克100指数(QDII)A
+  "019524", // 华泰柏瑞纳斯达克100ETF联接(QDII)A
+  "161130", // 易方达纳斯达克100ETF联接(QDII-LOF)A
+  "016532", // 嘉实纳斯达克100联接(QDII)A
+  "019547", // 招商纳斯达克100ETF联接(QDII)A
+  "539001", // 建信纳斯达克100指数QDII A
+  "015299", // 华夏纳斯达克100ETF联接(QDII)A
+  "018966", // 汇添富纳斯达克100ETF联接(QDII)A
+  "040046", // 华安纳斯达克100指数(QDII)
+];
+
+/**
+ * 标普500场外基金代码列表
+ * 来源：wise-etf.com/sp500 参考的天天基金网数据
+ */
+const SP500_OTC_CODES = [
+  "161128", // 易方达标普信息科技指数(QDII-FOF)A
+  "050025", // 博时标普500ETF联接(QDII)A
+  "017641", // 摩根标普500指数(QDII)A
+  "161125", // 易方达标普500指数(QDII-LOF)A
+  "017028", // 国泰标普500ETF联接(QDII)A
+  "007721", // 天弘标普500(QDII-FOF)A
+  "018064", // 华夏标普500ETF联接(QDII)A
+  "096001", // 大成标普500等权重指数(QDII)A
+];
+
+/**
+ * 美股主动型基金代码列表
+ * 来源：wise-etf.com/active 参考的天天基金网数据
+ */
+const ACTIVE_US_CODES = [
+  "457001", // 国富亚洲机会股票(QDII)A
+  "002891", // 华夏移动互联灵活配置混合(QDII)A
+  "012920", // 易方达全球成长精选混合(QDII)A
+  "539002", // 建信新兴市场优选混合(QDII)A
+  "018155", // 创金合信全球医药生物股票发起式(QDII)A
+  "018156", // 创金合信全球医药生物股票发起式(QDII)C
+  "017730", // 嘉实全球产业升级股票(QDII)A
+  "017731", // 嘉实全球产业升级股票发起式(QDII)C
+  "006373", // 国富全球科技互联混合(QDII)人民币A
+  "005698", // 华夏全球科技先锋混合(QDII)
+  "501226", // 长城全球新能源汽车股票(QDII-LOF)A
+  "008253", // 华宝致远混合(QDII)A
+  "022184", // 富国全球科技互联网股票(QDII)C
+  "006555", // 浦银安盛全球智能科技股票(QDII)A
+  "001668", // 汇添富全球移动互联混合(QDII)A
+  "100055", // 富国全球科技互联网股票(QDII)A
+  "016823", // 天弘全球新能源汽车股票(QDII-LOF)C
+  "270023", // 广发全球精选股票(QDII)A
+  "018036", // 长城全球新能源车股票发起式(QDII)C
+  "004877", // 汇添富全球医疗混合(QDII)人民币
+  "016701", // 银华海外数字经济量化选股混合(QDII)A
+  "017145", // 华宝海外新能源汽车股票发起式(QDII)C
+  "017436", // 华宝纳斯达克精选股票(QDII)A
+  "017144", // 华宝海外新能源汽车股票(QDII)A
+  "016702", // 银华海外数字经济量化选股混合(QDII)C
+  "017437", // 华宝纳斯达克精选股票发起式(QDII)C
+  "006308", // 汇添富全球消费混合(QDII)人民币A
+  "006309", // 汇添富全球消费混合(QDII)人民币C
+];
+
+/** 从东方财富获取场外基金排行数据 */
+export async function getOTCFundData(codes: string[]): Promise<OTCFundData[]> {
+  return cachedFetch(`otc-fund-${codes.join(",")}`, async () => {
+    try {
+      // 构建筛选条件
+      const codeList = codes.map((c) => `"${c}"`).join(",");
+      const url = `https://datacenter-web.eastmoney.com/api/data/v1/get?reportName=RPT_FUND_RANK&columns=SECURITY_CODE,FUND_NAME,FUND_SCALE,CHANGE_YEAR,CHANGE,CHANGE_MONTH,CHANGE_3MONTHS,CHANGE_6MONTHS,CHANGE_FOUNDLD,PER_NAV,NAV_DATE,APPLY_RATE,FUND_TYPECODE&filter=(SECURITY_CODE%20in%20(${codeList}))&pageNumber=1&pageSize=200&sortColumns=CHANGE_YEAR&sortTypes=-1`;
+
+      const data = await fetchJson<FundRankResponse>(url, {
+        headers: { Referer: "https://fund.eastmoney.com/" },
+      });
+
+      const items = data?.result?.data ?? [];
+      // 去重：同一基金代码可能有多条记录（不同FUND_TYPECODE），只保留第一条
+      const seen = new Set<string>();
+      const unique = items.filter((item) => {
+        const code = strVal(item.SECURITY_CODE);
+        if (seen.has(code)) return false;
+        seen.add(code);
+        return true;
+      });
+
+      // 并行获取申购状态
+      const purchaseInfo = await getFundPurchaseStatus(codes);
+
+      return unique.map((item) => {
+        const code = strVal(item.SECURITY_CODE);
+        const rawScale = numVal(item.FUND_SCALE);
+        const info = purchaseInfo.get(code);
+
+        return {
+          code,
+          name: strVal(item.FUND_NAME),
+          scale: rawScale > 0 ? Math.round((rawScale / 1e8) * 10) / 10 : 0,
+          returnOneYear: numVal(item.CHANGE_YEAR, -999) === -999 ? null : numVal(item.CHANGE_YEAR),
+          returnSixMonth:
+            numVal(item.CHANGE_6MONTHS, -999) === -999 ? null : numVal(item.CHANGE_6MONTHS),
+          returnThreeMonth:
+            numVal(item.CHANGE_3MONTHS, -999) === -999 ? null : numVal(item.CHANGE_3MONTHS),
+          returnOneMonth:
+            numVal(item.CHANGE_MONTH, -999) === -999 ? null : numVal(item.CHANGE_MONTH),
+          changeDaily: numVal(item.CHANGE, -999) === -999 ? null : numVal(item.CHANGE),
+          returnSinceInception:
+            numVal(item.CHANGE_FOUNDLD, -999) === -999 ? null : numVal(item.CHANGE_FOUNDLD),
+          nav: numVal(item.PER_NAV, -999) === -999 ? null : numVal(item.PER_NAV),
+          navDate: strVal(item.NAV_DATE).slice(0, 10),
+          purchaseRate: numVal(item.APPLY_RATE, -999) === -999 ? null : numVal(item.APPLY_RATE),
+          purchaseStatus: info?.status ?? "未知",
+          purchaseLimit: info?.limit ?? "未知",
+        };
+      });
+    } catch {
+      return [];
+    }
+  });
+}
+
+/** 基金申购状态信息 */
+interface PurchaseInfo {
+  status: string;
+  limit: string;
+}
+
+/**
+ * 从天天基金网获取基金申购状态和限额
+ * 数据来源：fundf10.eastmoney.com 基金详情页
+ */
+async function getFundPurchaseStatus(codes: string[]): Promise<Map<string, PurchaseInfo>> {
+  const result = new Map<string, PurchaseInfo>();
+
+  // 并行获取每只基金的详情页
+  const tasks = codes.map(async (code) => {
+    try {
+      const html = await fetchText(`https://fundf10.eastmoney.com/jjjz_${code}.html`, {
+        headers: { Referer: "https://fund.eastmoney.com/" },
+      });
+
+      let status = "开放";
+      let limit = "不限额";
+
+      // 解析申购状态
+      if (html.includes("暂停申购")) {
+        status = "暂停";
+        limit = "暂停申购";
+      } else if (html.includes("限大额")) {
+        status = "限大额";
+        // 尝试提取限额信息
+        const limitMatch = html.match(/单日累计购买上限(\d+\.?\d*[万亿]?元?)/);
+        if (limitMatch) {
+          limit = limitMatch[1];
+        } else {
+          const limitMatch2 = html.match(/购买上限(\d+\.?\d*[万亿]?元)/);
+          if (limitMatch2) {
+            limit = limitMatch2[1];
+          }
+        }
+      }
+
+      result.set(code, { status, limit });
+    } catch {
+      result.set(code, { status: "未知", limit: "未知" });
+    }
+  });
+
+  await Promise.all(tasks);
+  return result;
+}
+
+/** 获取纳指100场外基金数据 */
+export async function getNasdaqOTCData(): Promise<OTCFundData[]> {
+  return getOTCFundData(NASDAQ_100_OTC_CODES);
+}
+
+/** 获取标普500场外基金数据 */
+export async function getSP500OTCData(): Promise<OTCFundData[]> {
+  return getOTCFundData(SP500_OTC_CODES);
+}
+
+/** 获取美股主动型基金数据 */
+export async function getActiveUSFundData(): Promise<OTCFundData[]> {
+  return getOTCFundData(ACTIVE_US_CODES);
+}
