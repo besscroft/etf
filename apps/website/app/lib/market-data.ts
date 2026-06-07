@@ -585,3 +585,169 @@ export async function getFundDetail(code: string): Promise<{
   const all = await getETFPremiumData();
   return all.find((e) => e.code === code) ?? null;
 }
+
+// ==================== 基金详情数据 ====================
+
+/** 基金详情完整数据 */
+export interface FundDetailData {
+  code: string;
+  name: string;
+  index: string;
+  premium: number;
+  price: number;
+  changePercent: number;
+  scale: string;
+  fee: string;
+  // 阶段涨幅
+  performance: {
+    oneMonth: number | null;
+    threeMonth: number | null;
+    sixMonth: number | null;
+    oneYear: number | null;
+  };
+  // 业绩走势（近1年净值趋势，最多365个点）
+  navTrend: Array<{ date: string; nav: number; dailyReturn: number }>;
+  // 重仓股行情
+  topHoldings: Array<{
+    symbol: string;
+    name: string;
+    price: number;
+    changePercent: number;
+  }>;
+  // 历史净值（最近30条）
+  navHistory: Array<{
+    date: string;
+    nav: string;
+    accNav: string;
+    dailyGrowth: string;
+  }>;
+}
+
+/** 从东方财富pingzhongdata JS中提取基金详情 */
+export async function getFundDetailData(code: string): Promise<FundDetailData | null> {
+  // 先获取基础溢价数据
+  const basic = await getFundDetail(code);
+  if (!basic) return null;
+
+  return cachedFetch(
+    `fund-detail-${code}`,
+    async () => {
+      // 默认值
+      const result: FundDetailData = {
+        ...basic,
+        performance: { oneMonth: null, threeMonth: null, sixMonth: null, oneYear: null },
+        navTrend: [],
+        topHoldings: [],
+        navHistory: [],
+      };
+
+      // 并行获取：pingzhongdata + 历史净值
+      const [pingzhongText, navHistoryData] = await Promise.all([
+        fetchText(`https://fund.eastmoney.com/pingzhongdata/${code}.js`, {
+          headers: { Referer: "https://fund.eastmoney.com/" },
+        }).catch(() => ""),
+        fetchJson<{
+          Data?: { LSJZList?: Array<{ FSRQ: string; DWJZ: string; LJJZ: string; JZZZL: string }> };
+          TotalCount?: number;
+        }>(`https://api.fund.eastmoney.com/f10/lsjz?fundCode=${code}&pageIndex=1&pageSize=30`, {
+          headers: { Referer: "https://fundf10.eastmoney.com/" },
+        }).catch(() => ({}) as Record<string, unknown>),
+      ]);
+
+      // 解析pingzhongdata
+      if (pingzhongText) {
+        // 阶段涨幅
+        const syl1n = pingzhongText.match(/syl_1n="([^"]*)"/);
+        const syl6y = pingzhongText.match(/syl_6y="([^"]*)"/);
+        const syl3y = pingzhongText.match(/syl_3y="([^"]*)"/);
+        const syl1y = pingzhongText.match(/syl_1y="([^"]*)"/);
+        result.performance = {
+          oneMonth: syl1y?.[1] ? parseFloat(syl1y[1]) : null,
+          threeMonth: syl3y?.[1] ? parseFloat(syl3y[1]) : null,
+          sixMonth: syl6y?.[1] ? parseFloat(syl6y[1]) : null,
+          oneYear: syl1n?.[1] ? parseFloat(syl1n[1]) : null,
+        };
+
+        // 净值走势（取近1年数据）
+        const navMatch = pingzhongText.match(/Data_netWorthTrend\s*=\s*(\[[\s\S]*?\]);/);
+        if (navMatch) {
+          try {
+            const allData: Array<{ x: number; y: number; equityReturn: number }> = JSON.parse(
+              navMatch[1],
+            );
+            // 取最近365个数据点
+            const recent = allData.slice(-365);
+            result.navTrend = recent.map((d) => ({
+              date: new Date(d.x).toISOString().split("T")[0],
+              nav: d.y,
+              dailyReturn: d.equityReturn ?? 0,
+            }));
+          } catch {
+            // 解析失败
+          }
+        }
+
+        // 重仓股代码
+        const stockMatch = pingzhongText.match(/stockCodes=(\[[^\]]+\])/);
+        if (stockMatch) {
+          try {
+            const stockCodes: string[] = JSON.parse(stockMatch[1]);
+            // 提取股票代码（如 NVDA105 → NVDA）
+            const symbols = stockCodes
+              .map((s) => s.replace(/\d+$/, ""))
+              .filter((s) => s.length > 0);
+
+            if (symbols.length > 0) {
+              // 从新浪获取实时行情
+              const sinaCodes = symbols.map((s) => `gb_${s.toLowerCase()}`).join(",");
+              const stockText = await fetchText(`http://hq.sinajs.cn/list=${sinaCodes}`, {
+                headers: { Referer: "http://finance.sina.com.cn/" },
+              }).catch(() => "");
+
+              if (stockText) {
+                const lines = stockText.split("\n").filter((l) => l.trim());
+                for (const line of lines) {
+                  const m = line.match(/var hq_str_gb_(\w+)="([^"]*)"/);
+                  if (m && m[2]) {
+                    const parts = m[2].split(",");
+                    result.topHoldings.push({
+                      symbol: m[1].toUpperCase(),
+                      name: parts[0] || m[1].toUpperCase(),
+                      price: parseFloat(parts[1]) || 0,
+                      changePercent: parseFloat(parts[22]) || 0,
+                    });
+                  }
+                }
+              }
+            }
+          } catch {
+            // 解析失败
+          }
+        }
+      }
+
+      // 解析历史净值
+      const navData = navHistoryData as {
+        Data?: {
+          LSJZList?: Array<{
+            FSRQ: string;
+            DWJZ: string;
+            LJJZ: string;
+            JZZZL: string;
+          }>;
+        };
+      };
+      if (navData?.Data?.LSJZList) {
+        result.navHistory = navData.Data.LSJZList.map((d) => ({
+          date: d.FSRQ,
+          nav: d.DWJZ,
+          accNav: d.LJJZ,
+          dailyGrowth: d.JZZZL,
+        }));
+      }
+
+      return result;
+    },
+    10 * 60 * 1000,
+  ); // 缓存10分钟
+}
