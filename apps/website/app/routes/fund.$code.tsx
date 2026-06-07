@@ -231,6 +231,7 @@ export default function FundDetail() {
                     <tr className="border-b text-xs text-muted-foreground">
                       <th className="pb-2 text-left font-medium">代码</th>
                       <th className="pb-2 text-left font-medium">名称</th>
+                      <th className="pb-2 text-right font-medium">持仓占比</th>
                       <th className="pb-2 text-right font-medium">最新价</th>
                       <th className="pb-2 text-right font-medium">涨跌幅</th>
                     </tr>
@@ -240,6 +241,13 @@ export default function FundDetail() {
                       <tr key={stock.symbol} className="border-b last:border-0">
                         <td className="py-2 font-mono text-xs">{stock.symbol}</td>
                         <td className="py-2">{stock.name}</td>
+                        <td className="py-2 text-right">
+                          {stock.holdingRatio > 0 ? (
+                            <span className="font-medium">{stock.holdingRatio.toFixed(2)}%</span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
                         <td className="py-2 text-right">
                           {stock.price > 0 ? `$${stock.price.toFixed(2)}` : "—"}
                         </td>

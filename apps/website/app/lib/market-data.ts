@@ -51,6 +51,24 @@ async function fetchText(url: string, init?: RequestInit): Promise<string> {
   return res.text();
 }
 
+/** 以 GBK 编码获取文本（新浪行情等接口需要） */
+async function fetchTextGBK(url: string, init?: RequestInit): Promise<string> {
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+      ...(init?.headers as Record<string, string>),
+    },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    throw new Error(`fetch ${url} failed: ${res.status}`);
+  }
+  const buffer = await res.arrayBuffer();
+  return new TextDecoder("gbk").decode(buffer);
+}
+
 /** 通用 fetchJson 封装 */
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const text = await fetchText(url, {
@@ -77,7 +95,7 @@ export async function getSinaIndexData(
   return cachedFetch(`sina-index-${codes.join(",")}`, async () => {
     try {
       const list = codes.join(",");
-      const text = await fetchText(`http://hq.sinajs.cn/list=${list}`, {
+      const text = await fetchTextGBK(`http://hq.sinajs.cn/list=${list}`, {
         headers: { Referer: "http://finance.sina.com.cn/" },
       });
 
@@ -137,7 +155,7 @@ export async function getSinaUSStock(symbol: string): Promise<{
 }> {
   return cachedFetch(`sina-us-${symbol}`, async () => {
     try {
-      const text = await fetchText(`http://hq.sinajs.cn/list=gb_${symbol}`, {
+      const text = await fetchTextGBK(`http://hq.sinajs.cn/list=gb_${symbol}`, {
         headers: { Referer: "http://finance.sina.com.cn/" },
       });
 
@@ -613,6 +631,7 @@ export interface FundDetailData {
     name: string;
     price: number;
     changePercent: number;
+    holdingRatio: number; // 持仓占比(%)
   }>;
   // 历史净值（最近30条）
   navHistory: Array<{
@@ -695,10 +714,35 @@ export async function getFundDetailData(code: string): Promise<FundDetailData | 
               .map((s) => s.replace(/\d+$/, ""))
               .filter((s) => s.length > 0);
 
+            // 从东方财富获取持仓占比
+            const holdingMap = new Map<string, number>();
+            try {
+              const holdingText = await fetchText(
+                `https://fund.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${code}&topline=10&year=&month=&rt=0.${Date.now()}`,
+                { headers: { Referer: "https://fundf10.eastmoney.com/" } },
+              ).catch(() => "");
+              if (holdingText) {
+                // 解析持仓占比，格式如：<td class='tor'>9.89%</td>
+                const ratioMatches = [
+                  ...holdingText.matchAll(/class='(?:tor|tol)'>\s*([\d.]+)%\s*<\/td>/g),
+                ];
+                // 解析股票代码，格式如：href="...code=NVDA..."
+                const codeMatches = [...holdingText.matchAll(/code=(\w+)[&"']/g)];
+                for (let i = 0; i < Math.min(codeMatches.length, ratioMatches.length); i++) {
+                  holdingMap.set(
+                    codeMatches[i][1].toUpperCase(),
+                    parseFloat(ratioMatches[i][1]) || 0,
+                  );
+                }
+              }
+            } catch {
+              // 忽略
+            }
+
             if (symbols.length > 0) {
               // 从新浪获取实时行情
               const sinaCodes = symbols.map((s) => `gb_${s.toLowerCase()}`).join(",");
-              const stockText = await fetchText(`http://hq.sinajs.cn/list=${sinaCodes}`, {
+              const stockText = await fetchTextGBK(`http://hq.sinajs.cn/list=${sinaCodes}`, {
                 headers: { Referer: "http://finance.sina.com.cn/" },
               }).catch(() => "");
 
@@ -708,11 +752,13 @@ export async function getFundDetailData(code: string): Promise<FundDetailData | 
                   const m = line.match(/var hq_str_gb_(\w+)="([^"]*)"/);
                   if (m && m[2]) {
                     const parts = m[2].split(",");
+                    const sym = m[1].toUpperCase();
                     result.topHoldings.push({
-                      symbol: m[1].toUpperCase(),
-                      name: parts[0] || m[1].toUpperCase(),
+                      symbol: sym,
+                      name: parts[0] || sym,
                       price: parseFloat(parts[1]) || 0,
                       changePercent: parseFloat(parts[22]) || 0,
+                      holdingRatio: holdingMap.get(sym) || 0,
                     });
                   }
                 }
