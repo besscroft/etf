@@ -42,6 +42,14 @@ export async function loader() {
 export default function Home() {
   const data = useLoaderData<typeof loader>();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // 对比列表：存储已选基金的 code
+  const [compareList, setCompareList] = useState<string[]>([]);
+
+  const toggleCompare = (code: string) => {
+    setCompareList((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code],
+    );
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -54,9 +62,19 @@ export default function Home() {
         <MarketIndicators data={data} />
         <MarketTemperature data={data} />
         <ToolboxSection />
-        <PremiumAlertSection data={data} />
+        <PremiumAlertSection
+          data={data}
+          compareList={compareList}
+          onToggleCompare={toggleCompare}
+        />
       </main>
       <Footer fetchedAt={data.fetchedAt} />
+      {/* 浮动对比卡片 */}
+      <CompareFloatBar
+        compareList={compareList}
+        etfList={data.etfPremium}
+        onRemove={toggleCompare}
+      />
     </div>
   );
 }
@@ -70,7 +88,13 @@ function Header({
   mobileMenuOpen: boolean;
   onToggleMenu: () => void;
 }) {
-  const navItems = ["首页", "估值", "懒人组合", "导出数据"];
+  const navItems = [
+    { label: "首页", href: "/" },
+    { label: "纳指被动", href: "/cn/funds?funds=513100,513110,159941,513300,159659" },
+    { label: "标普500", href: "/cn/funds?funds=513500,159612,513650" },
+    { label: "场内ETF", href: "/cn/fund" },
+    { label: "美股主动", href: "/cn/funds?funds=000934,050025,040018" },
+  ];
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm">
@@ -83,8 +107,8 @@ function Header({
         {/* 桌面端导航 */}
         <nav className="hidden items-center gap-1 md:flex">
           {navItems.map((item) => (
-            <Button key={item} variant="ghost" size="sm">
-              {item}
+            <Button key={item.label} variant="ghost" size="sm" asChild>
+              <Link to={item.href}>{item.label}</Link>
             </Button>
           ))}
         </nav>
@@ -105,8 +129,14 @@ function Header({
       {mobileMenuOpen && (
         <nav className="border-t bg-background px-3 py-2 md:hidden">
           {navItems.map((item) => (
-            <Button key={item} variant="ghost" size="sm" className="w-full justify-start">
-              {item}
+            <Button
+              key={item.label}
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start"
+              asChild
+            >
+              <Link to={item.href}>{item.label}</Link>
             </Button>
           ))}
         </nav>
@@ -503,7 +533,15 @@ function ToolCard({
 type SortField = "premium" | "changePercent" | "name" | "code" | "scale";
 type SortDir = "asc" | "desc";
 
-function PremiumAlertSection({ data }: { data: MarketData }) {
+function PremiumAlertSection({
+  data,
+  compareList,
+  onToggleCompare,
+}: {
+  data: MarketData;
+  compareList: string[];
+  onToggleCompare: (code: string) => void;
+}) {
   const etfList = data.etfPremium;
   const [sortField, setSortField] = useState<SortField>("premium");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -710,14 +748,20 @@ function PremiumAlertSection({ data }: { data: MarketData }) {
                             <TrendingUp className="size-3" />
                             <span className="hidden lg:inline">分析</span>
                           </Link>
-                          <Link
-                            to={`/cn/funds?funds=${row.code}`}
-                            className="inline-flex items-center gap-0.5 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                            title="对比"
+                          <button
+                            onClick={() => onToggleCompare(row.code)}
+                            className={`inline-flex items-center gap-0.5 rounded-sm px-1.5 py-0.5 text-xs transition-colors ${
+                              compareList.includes(row.code)
+                                ? "bg-primary/15 text-primary"
+                                : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                            }`}
+                            title={compareList.includes(row.code) ? "移除对比" : "加入对比"}
                           >
                             <GitCompare className="size-3" />
-                            <span className="hidden lg:inline">对比</span>
-                          </Link>
+                            <span className="hidden lg:inline">
+                              {compareList.includes(row.code) ? "已选" : "对比"}
+                            </span>
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -767,13 +811,17 @@ function PremiumAlertSection({ data }: { data: MarketData }) {
                       <TrendingUp className="size-3" />
                       分析
                     </Link>
-                    <Link
-                      to={`/cn/funds?funds=${row.code}`}
-                      className="inline-flex items-center gap-1 rounded-sm border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                    <button
+                      onClick={() => onToggleCompare(row.code)}
+                      className={`inline-flex items-center gap-1 rounded-sm border px-2 py-1 text-xs transition-colors ${
+                        compareList.includes(row.code)
+                          ? "border-primary/30 bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                      }`}
                     >
                       <GitCompare className="size-3" />
-                      对比
-                    </Link>
+                      {compareList.includes(row.code) ? "已选" : "对比"}
+                    </button>
                   </div>
                 </div>
               ))}
@@ -807,6 +855,51 @@ function PremiumBadge({ value }: { value: number }) {
   );
 }
 
+/* ==================== 浮动对比卡片 ==================== */
+
+function CompareFloatBar({
+  compareList,
+  etfList,
+  onRemove,
+}: {
+  compareList: string[];
+  etfList: Array<{ code: string; name: string }>;
+  onRemove: (code: string) => void;
+}) {
+  if (compareList.length === 0) return null;
+
+  const selectedFunds = compareList
+    .map((code) => etfList.find((e) => e.code === code))
+    .filter(Boolean) as Array<{ code: string; name: string }>;
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50 max-w-xs animate-in fade-in slide-in-from-bottom-2 duration-200">
+      <div className="rounded-lg border bg-card p-3 shadow-lg">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-xs font-medium">已选对比 ({compareList.length})</span>
+          <Link
+            to={`/cn/funds?funds=${compareList.join(",")}`}
+            className="inline-flex items-center gap-1 rounded-sm bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/80"
+          >
+            <GitCompare className="size-3" />
+            开始对比
+          </Link>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {selectedFunds.map((fund) => (
+            <Badge key={fund.code} variant="secondary" className="gap-1 text-xs">
+              <span className="max-w-[80px] truncate">{fund.name}</span>
+              <button onClick={() => onRemove(fund.code)} className="ml-0.5 hover:text-destructive">
+                <X className="size-3" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ==================== Footer ==================== */
 
 function Footer({ fetchedAt }: { fetchedAt: string }) {
@@ -821,7 +914,7 @@ function Footer({ fetchedAt }: { fetchedAt: string }) {
   return (
     <footer className="border-t py-6 md:py-8">
       <div className="container mx-auto max-w-6xl px-3 text-center text-xs text-muted-foreground sm:px-4">
-        <p className="mb-2">ETFVoid · 中国投资者的美股ETF与QDII基金追踪平台</p>
+        <p className="mb-2">ETFVoid · 美股ETF与QDII基金追踪平台</p>
         <p className="mb-1">
           数据更新于 {timeStr} · 数据来源: 新浪财经 / CBOE / multpl.com / 东方财富
         </p>
