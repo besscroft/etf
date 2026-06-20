@@ -204,18 +204,11 @@ function Header({
 /* ==================== Hero 区域 ==================== */
 
 function HeroSection({ data }: { data: MarketData }) {
-  const avgPremium =
-    data.etfPremium.length > 0
-      ? Math.round(
-          (data.etfPremium.reduce((s, e) => s + e.premium, 0) / data.etfPremium.length) * 10,
-        ) / 10
-      : 0;
-
   return (
     <section className="py-8 md:py-16">
       {/* 首屏指标：stagger 依次入场，数字滚动 */}
       <StaggerContainer
-        className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-5 md:gap-4"
+        className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4 md:gap-4"
         stagger={0.1}
       >
         <StaggerItem>
@@ -252,16 +245,6 @@ function HeroSection({ data }: { data: MarketData }) {
             sub={formatChange(data.dowJones.changePercent)}
             trend={getTrend(data.dowJones.changePercent)}
             highlight
-          />
-        </StaggerItem>
-        <StaggerItem>
-          <MetricCard
-            label="ETF均溢价"
-            numericValue={avgPremium}
-            suffix="%"
-            sub="当前"
-            trend="neutral"
-            warning={avgPremium > 2}
           />
         </StaggerItem>
       </StaggerContainer>
