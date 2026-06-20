@@ -3,6 +3,8 @@ import { useState, useMemo } from "react";
 import { Card, CardContent } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { FadeIn } from "~/components/motion";
+import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowLeft,
   Shield,
@@ -13,6 +15,7 @@ import {
   Filter,
   AlertTriangle,
 } from "lucide-react";
+import { DURATION, EASING } from "~/lib/motion";
 
 export function meta() {
   return [
@@ -456,7 +459,12 @@ export default function Stable() {
   return (
     <div className="min-h-screen bg-background">
       {/* 顶部导航 */}
-      <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm">
+      <motion.header
+        className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm"
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+      >
         <div className="container mx-auto flex max-w-6xl items-center gap-3 px-3 py-3 sm:px-4">
           <Link to="/">
             <Button variant="ghost" size="icon" aria-label="返回首页">
@@ -470,7 +478,7 @@ export default function Stable() {
           <span className="text-muted-foreground">/</span>
           <span className="font-medium">稳健收益</span>
         </div>
-      </header>
+      </motion.header>
 
       <main className="container mx-auto max-w-6xl px-3 py-6 sm:px-4">
         {/* 标题区 */}

@@ -4,6 +4,8 @@ import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { FadeIn } from "~/components/motion";
+import { motion } from "motion/react";
 import {
   ArrowLeft,
   BarChart3,
@@ -21,6 +23,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { getETFPremiumData, getFundDetailData, type FundDetailData } from "~/lib/market-data";
+import { DURATION, EASING } from "~/lib/motion";
 
 export function meta() {
   return [
@@ -67,7 +70,12 @@ export default function Analysis() {
   return (
     <div className="min-h-screen bg-background">
       {/* 顶部导航 */}
-      <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm">
+      <motion.header
+        className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm"
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+      >
         <div className="container mx-auto flex max-w-4xl items-center gap-3 px-3 py-3 sm:px-4">
           <Link to="/">
             <Button variant="ghost" size="icon" aria-label="返回首页">
@@ -81,7 +89,7 @@ export default function Analysis() {
           <span className="text-muted-foreground">/</span>
           <span className="font-medium">基金分析</span>
         </div>
-      </header>
+      </motion.header>
 
       <main className="container mx-auto max-w-4xl px-3 py-6 sm:px-4">
         {/* 搜索选择基金 */}

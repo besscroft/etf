@@ -5,9 +5,12 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLocation,
 } from "react-router";
+import { AnimatePresence } from "motion/react";
 
 import type { Route } from "./+types/root";
+import { PageTransition } from "~/components/motion";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [
@@ -42,7 +45,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  return <Outlet />;
+  const location = useLocation();
+  return (
+    <AnimatePresence mode="wait">
+      {/* routeKey 绑定 pathname，路由切换时触发退场→入场过渡 */}
+      <PageTransition routeKey={location.pathname}>
+        <Outlet />
+      </PageTransition>
+    </AnimatePresence>
+  );
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

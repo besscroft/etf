@@ -3,6 +3,8 @@ import { useState, useMemo } from "react";
 import { Card, CardContent } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { FadeIn } from "~/components/motion";
+import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowLeft,
   BarChart3,
@@ -14,6 +16,7 @@ import {
   TrendingDown,
 } from "lucide-react";
 import { getETFPremiumData } from "~/lib/market-data";
+import { DURATION, EASING } from "~/lib/motion";
 
 export function meta() {
   return [
@@ -94,7 +97,7 @@ export default function ETF() {
       <Header />
       <main className="container mx-auto max-w-6xl px-3 py-6 sm:px-4">
         {/* 标题区 */}
-        <section className="mb-6">
+        <FadeIn className="mb-6" delay={0.1}>
           <h1 className="mb-2 text-xl font-bold tracking-tight md:text-2xl">
             场内ETF（纳指 / 标普）
           </h1>
@@ -102,93 +105,115 @@ export default function ETF() {
             {etfList.length}只 · 行情更新：{fetchedAt.slice(11, 16)}
           </p>
           <p className="text-xs text-muted-foreground">数据来源：东方财富 / 新浪财经</p>
-        </section>
+        </FadeIn>
 
         {/* 溢价预警 */}
-        {highPremiumCount > 0 && (
-          <Card className="mb-6 border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20">
-            <CardContent className="flex gap-3 py-4">
-              <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-500" />
-              <div>
-                <p className="mb-1 text-sm font-medium">溢价预警</p>
-                <p className="text-xs text-muted-foreground md:text-sm">
-                  当前有 {highPremiumCount}{" "}
-                  只ETF溢价率超过3%，买入需谨慎。高溢价意味着场内价格远高于净值，溢价收窄时可能面临较大亏损。
-                </p>
+        <AnimatePresence>
+          {highPremiumCount > 0 && (
+            <motion.div
+              key="premium-alert"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+            >
+              <Card className="mb-6 border-amber-500/30 bg-amber-50/50 dark:bg-amber-950/20">
+                <CardContent className="flex gap-3 py-4">
+                  <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-500" />
+                  <div>
+                    <p className="mb-1 text-sm font-medium">溢价预警</p>
+                    <p className="text-xs text-muted-foreground md:text-sm">
+                      当前有 {highPremiumCount}{" "}
+                      只ETF溢价率超过3%，买入需谨慎。高溢价意味着场内价格远高于净值，溢价收窄时可能面临较大亏损。
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ETF表格 */}
+        <FadeIn delay={0.2}>
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/30">
+                      <ThSortableCell
+                        label="代码"
+                        field="code"
+                        current={sortField}
+                        dir={sortDir}
+                        onSort={toggleSort}
+                      />
+                      <ThSortableCell
+                        label="ETF名称"
+                        field="name"
+                        current={sortField}
+                        dir={sortDir}
+                        onSort={toggleSort}
+                      />
+                      <ThSortableCell
+                        label="跟踪指数"
+                        field="index"
+                        current={sortField}
+                        dir={sortDir}
+                        onSort={toggleSort}
+                      />
+                      <ThSortableCell
+                        label="规模(亿)"
+                        field="scale"
+                        current={sortField}
+                        dir={sortDir}
+                        onSort={toggleSort}
+                      />
+                      <ThSortableCell
+                        label="昨日涨跌"
+                        field="changePercent"
+                        current={sortField}
+                        dir={sortDir}
+                        onSort={toggleSort}
+                      />
+                      <ThSortableCell
+                        label="溢价率"
+                        field="premium"
+                        current={sortField}
+                        dir={sortDir}
+                        onSort={toggleSort}
+                      />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sorted.map((etf) => (
+                      <ETFRow key={etf.code} etf={etf} />
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </CardContent>
           </Card>
-        )}
+        </FadeIn>
 
-        {/* ETF表格 */}
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/30">
-                    <ThSortableCell
-                      label="代码"
-                      field="code"
-                      current={sortField}
-                      dir={sortDir}
-                      onSort={toggleSort}
-                    />
-                    <ThSortableCell
-                      label="ETF名称"
-                      field="name"
-                      current={sortField}
-                      dir={sortDir}
-                      onSort={toggleSort}
-                    />
-                    <ThSortableCell
-                      label="跟踪指数"
-                      field="index"
-                      current={sortField}
-                      dir={sortDir}
-                      onSort={toggleSort}
-                    />
-                    <ThSortableCell
-                      label="规模(亿)"
-                      field="scale"
-                      current={sortField}
-                      dir={sortDir}
-                      onSort={toggleSort}
-                    />
-                    <ThSortableCell
-                      label="昨日涨跌"
-                      field="changePercent"
-                      current={sortField}
-                      dir={sortDir}
-                      onSort={toggleSort}
-                    />
-                    <ThSortableCell
-                      label="溢价率"
-                      field="premium"
-                      current={sortField}
-                      dir={sortDir}
-                      onSort={toggleSort}
-                    />
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.map((etf) => (
-                    <ETFRow key={etf.code} etf={etf} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-
-        {sorted.length === 0 && (
-          <Card className="mt-4 py-12">
-            <CardContent className="flex flex-col items-center gap-3 text-center">
-              <BarChart3 className="size-10 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">暂无场内ETF数据</p>
-            </CardContent>
-          </Card>
-        )}
+        <AnimatePresence>
+          {sorted.length === 0 && (
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+            >
+              <Card className="mt-4 py-12">
+                <CardContent className="flex flex-col items-center gap-3 text-center">
+                  <BarChart3 className="size-10 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">暂无场内ETF数据</p>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
           溢价率 = (市价 - 净值) / 净值 × 100%。数据仅供参考，不构成投资建议。
@@ -200,7 +225,12 @@ export default function ETF() {
 
 function Header() {
   return (
-    <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm">
+    <motion.header
+      className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm"
+      initial={{ y: -20, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+    >
       <div className="container mx-auto flex max-w-6xl items-center gap-3 px-3 py-3 sm:px-4">
         <Link to="/">
           <Button variant="ghost" size="icon" aria-label="返回首页">
@@ -214,7 +244,7 @@ function Header() {
         <span className="text-muted-foreground">/</span>
         <span className="font-medium">场内ETF</span>
       </div>
-    </header>
+    </motion.header>
   );
 }
 

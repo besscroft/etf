@@ -4,6 +4,8 @@ import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { FadeIn, StaggerContainer, StaggerItem } from "~/components/motion";
+import { motion } from "motion/react";
 import {
   ArrowLeft,
   BarChart3,
@@ -17,6 +19,7 @@ import {
   Users,
 } from "lucide-react";
 import { getFundDetailData } from "~/lib/market-data";
+import { DURATION, EASING } from "~/lib/motion";
 
 export function meta({ params }: Route.MetaArgs) {
   return [
@@ -52,7 +55,12 @@ export default function FundDetail() {
   return (
     <div className="min-h-screen bg-background">
       {/* 顶部导航 */}
-      <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm">
+      <motion.header
+        className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm"
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+      >
         <div className="container mx-auto flex max-w-4xl items-center gap-3 px-3 py-3 sm:px-4">
           <Link to="/">
             <Button variant="ghost" size="icon" aria-label="返回首页">
@@ -64,11 +72,11 @@ export default function FundDetail() {
             ETFVoid
           </Link>
         </div>
-      </header>
+      </motion.header>
 
       <main className="container mx-auto max-w-4xl px-3 py-6 sm:px-4">
         {/* 基金标题 */}
-        <div className="mb-6">
+        <FadeIn className="mb-6" delay={0.1}>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold md:text-3xl">{fund.name}</h1>
             <Badge variant="secondary" className="font-mono">
@@ -78,80 +86,93 @@ export default function FundDetail() {
           <p className="mt-1 text-sm text-muted-foreground">
             {isOTC ? "场外基金" : `跟踪指数：${fund.index}`}
           </p>
-        </div>
+        </FadeIn>
 
         {/* 核心指标卡片 */}
-        <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
-          <Card>
-            <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
-              <span className="text-xs text-muted-foreground">
-                {isOTC ? "最新净值" : "当前价格"}
-              </span>
-              <span className="text-2xl font-bold">{fund.price || "—"}</span>
-              <span className="flex items-center gap-1 text-xs">
-                {fund.changePercent > 0 ? (
-                  <TrendingUp className="size-3 text-emerald-500" />
-                ) : fund.changePercent < 0 ? (
-                  <TrendingDown className="size-3 text-red-500" />
-                ) : (
-                  <Activity className="size-3 text-muted-foreground" />
-                )}
-                <span
-                  className={
-                    fund.changePercent > 0
-                      ? "text-emerald-500"
-                      : fund.changePercent < 0
-                        ? "text-red-500"
-                        : "text-muted-foreground"
-                  }
-                >
-                  {fund.changePercent > 0 ? "+" : ""}
-                  {fund.changePercent}%
-                </span>
-              </span>
-            </CardContent>
-          </Card>
-
-          {isOTC ? (
+        <StaggerContainer
+          className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4"
+          stagger={0.08}
+        >
+          <StaggerItem>
             <Card>
               <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
-                <span className="text-xs text-muted-foreground">近1年收益</span>
-                <span
-                  className={`text-2xl font-bold ${(fund.performance.oneYear ?? 0) >= 0 ? "text-emerald-500" : "text-red-500"}`}
-                >
-                  {fund.performance.oneYear !== null
-                    ? `${fund.performance.oneYear > 0 ? "+" : ""}${fund.performance.oneYear}%`
-                    : "—"}
+                <span className="text-xs text-muted-foreground">
+                  {isOTC ? "最新净值" : "当前价格"}
                 </span>
-                <span className="text-xs text-muted-foreground">阶段涨幅</span>
+                <span className="text-2xl font-bold">{fund.price || "—"}</span>
+                <span className="flex items-center gap-1 text-xs">
+                  {fund.changePercent > 0 ? (
+                    <TrendingUp className="size-3 text-emerald-500" />
+                  ) : fund.changePercent < 0 ? (
+                    <TrendingDown className="size-3 text-red-500" />
+                  ) : (
+                    <Activity className="size-3 text-muted-foreground" />
+                  )}
+                  <span
+                    className={
+                      fund.changePercent > 0
+                        ? "text-emerald-500"
+                        : fund.changePercent < 0
+                          ? "text-red-500"
+                          : "text-muted-foreground"
+                    }
+                  >
+                    {fund.changePercent > 0 ? "+" : ""}
+                    {fund.changePercent}%
+                  </span>
+                </span>
               </CardContent>
             </Card>
-          ) : (
+          </StaggerItem>
+
+          <StaggerItem>
+            {isOTC ? (
+              <Card>
+                <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
+                  <span className="text-xs text-muted-foreground">近1年收益</span>
+                  <span
+                    className={`text-2xl font-bold ${(fund.performance.oneYear ?? 0) >= 0 ? "text-emerald-500" : "text-red-500"}`}
+                  >
+                    {fund.performance.oneYear !== null
+                      ? `${fund.performance.oneYear > 0 ? "+" : ""}${fund.performance.oneYear}%`
+                      : "—"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">阶段涨幅</span>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
+                  <span className="text-xs text-muted-foreground">溢价率</span>
+                  <span className={`text-2xl font-bold ${premiumLevel.color}`}>
+                    +{fund.premium}%
+                  </span>
+                  <span className={`text-xs ${premiumLevel.color}`}>{premiumLevel.label}</span>
+                </CardContent>
+              </Card>
+            )}
+          </StaggerItem>
+
+          <StaggerItem>
             <Card>
               <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
-                <span className="text-xs text-muted-foreground">溢价率</span>
-                <span className={`text-2xl font-bold ${premiumLevel.color}`}>+{fund.premium}%</span>
-                <span className={`text-xs ${premiumLevel.color}`}>{premiumLevel.label}</span>
+                <span className="text-xs text-muted-foreground">基金规模</span>
+                <span className="text-2xl font-bold">{fund.scale}</span>
+                <span className="text-xs text-muted-foreground">管理规模</span>
               </CardContent>
             </Card>
-          )}
+          </StaggerItem>
 
-          <Card>
-            <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
-              <span className="text-xs text-muted-foreground">基金规模</span>
-              <span className="text-2xl font-bold">{fund.scale}</span>
-              <span className="text-xs text-muted-foreground">管理规模</span>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
-              <span className="text-xs text-muted-foreground">管理费率</span>
-              <span className="text-2xl font-bold">{fund.fee}</span>
-              <span className="text-xs text-muted-foreground">年费率</span>
-            </CardContent>
-          </Card>
-        </div>
+          <StaggerItem>
+            <Card>
+              <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
+                <span className="text-xs text-muted-foreground">管理费率</span>
+                <span className="text-2xl font-bold">{fund.fee}</span>
+                <span className="text-xs text-muted-foreground">年费率</span>
+              </CardContent>
+            </Card>
+          </StaggerItem>
+        </StaggerContainer>
 
         {/* 溢价分析（仅场内ETF显示） */}
         {!isOTC && (

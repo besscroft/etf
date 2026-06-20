@@ -3,6 +3,8 @@ import { useState, useMemo } from "react";
 import { Card, CardContent } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import { FadeIn } from "~/components/motion";
+import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowLeft,
   BarChart3,
@@ -14,6 +16,7 @@ import {
   TrendingDown,
 } from "lucide-react";
 import { getActiveUSFundData, type OTCFundData } from "~/lib/market-data";
+import { DURATION, EASING } from "~/lib/motion";
 
 export function meta() {
   return [
@@ -116,7 +119,7 @@ export default function Active() {
       <Header />
       <main className="container mx-auto max-w-6xl px-3 py-6 sm:px-4">
         {/* 标题区 */}
-        <section className="mb-6">
+        <FadeIn className="mb-6" delay={0.1}>
           <h1 className="mb-2 text-xl font-bold tracking-tight md:text-2xl">
             场外美股（主动型）基金对比
           </h1>
@@ -124,10 +127,10 @@ export default function Active() {
             {funds.length}只 · 行情更新：{fetchedAt.slice(11, 16)}
           </p>
           <p className="text-xs text-muted-foreground">数据来源：天天基金网 / 东方财富</p>
-        </section>
+        </FadeIn>
 
         {/* 筛选器 */}
-        <div className="mb-4 flex items-center gap-2">
+        <FadeIn className="mb-4 flex items-center gap-2" delay={0.15}>
           <Filter className="size-4 text-muted-foreground" />
           <div className="flex gap-1.5">
             {[
@@ -135,9 +138,11 @@ export default function Active() {
               { key: "open" as const, label: `仅开放申购 (${openCount})` },
               { key: "suspended" as const, label: `暂停申购 (${suspendedCount})` },
             ].map((opt) => (
-              <button
+              <motion.button
                 key={opt.key}
                 onClick={() => setFilterStatus(opt.key)}
+                whileTap={{ scale: 0.95 }}
+                transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
                 className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                   filterStatus === opt.key
                     ? "bg-primary text-primary-foreground"
@@ -145,81 +150,93 @@ export default function Active() {
                 }`}
               >
                 {opt.label}
-              </button>
+              </motion.button>
             ))}
           </div>
-        </div>
+        </FadeIn>
 
         {/* 基金表格 */}
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/30">
-                    <ThSortableCell
-                      label="代码"
-                      field="code"
-                      current={sortField}
-                      dir={sortDir}
-                      onSort={toggleSort}
-                    />
-                    <ThSortableCell
-                      label="基金名称"
-                      field="name"
-                      current={sortField}
-                      dir={sortDir}
-                      onSort={toggleSort}
-                    />
-                    <ThSortableCell
-                      label="规模(亿)"
-                      field="scale"
-                      current={sortField}
-                      dir={sortDir}
-                      onSort={toggleSort}
-                    />
-                    <ThSortableCell
-                      label="近1年滚动"
-                      field="returnOneYear"
-                      current={sortField}
-                      dir={sortDir}
-                      onSort={toggleSort}
-                    />
-                    <ThSortableCell
-                      label="昨日涨跌"
-                      field="changeDaily"
-                      current={sortField}
-                      dir={sortDir}
-                      onSort={toggleSort}
-                    />
-                    <ThCell>每日限额</ThCell>
-                    <ThSortableCell
-                      label="申购状态"
-                      field="purchaseStatus"
-                      current={sortField}
-                      dir={sortDir}
-                      onSort={toggleSort}
-                    />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((fund) => (
-                    <FundRow key={fund.code} fund={fund} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-
-        {filtered.length === 0 && (
-          <Card className="mt-4 py-12">
-            <CardContent className="flex flex-col items-center gap-3 text-center">
-              <Filter className="size-10 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">没有符合条件的基金</p>
+        <FadeIn delay={0.2}>
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/30">
+                      <ThSortableCell
+                        label="代码"
+                        field="code"
+                        current={sortField}
+                        dir={sortDir}
+                        onSort={toggleSort}
+                      />
+                      <ThSortableCell
+                        label="基金名称"
+                        field="name"
+                        current={sortField}
+                        dir={sortDir}
+                        onSort={toggleSort}
+                      />
+                      <ThSortableCell
+                        label="规模(亿)"
+                        field="scale"
+                        current={sortField}
+                        dir={sortDir}
+                        onSort={toggleSort}
+                      />
+                      <ThSortableCell
+                        label="近1年滚动"
+                        field="returnOneYear"
+                        current={sortField}
+                        dir={sortDir}
+                        onSort={toggleSort}
+                      />
+                      <ThSortableCell
+                        label="昨日涨跌"
+                        field="changeDaily"
+                        current={sortField}
+                        dir={sortDir}
+                        onSort={toggleSort}
+                      />
+                      <ThCell>每日限额</ThCell>
+                      <ThSortableCell
+                        label="申购状态"
+                        field="purchaseStatus"
+                        current={sortField}
+                        dir={sortDir}
+                        onSort={toggleSort}
+                      />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((fund) => (
+                      <FundRow key={fund.code} fund={fund} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </CardContent>
           </Card>
-        )}
+        </FadeIn>
+
+        <AnimatePresence>
+          {filtered.length === 0 && (
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+            >
+              <Card className="mt-4 py-12">
+                <CardContent className="flex flex-col items-center gap-3 text-center">
+                  <Filter className="size-10 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">没有符合条件的基金</p>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
           数据仅供参考，不构成投资建议。申购状态实时变化，请以基金公司公告为准。
@@ -231,7 +248,12 @@ export default function Active() {
 
 function Header() {
   return (
-    <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm">
+    <motion.header
+      className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm"
+      initial={{ y: -20, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+    >
       <div className="container mx-auto flex max-w-6xl items-center gap-3 px-3 py-3 sm:px-4">
         <Link to="/">
           <Button variant="ghost" size="icon" aria-label="返回首页">
@@ -245,7 +267,7 @@ function Header() {
         <span className="text-muted-foreground">/</span>
         <span className="font-medium">美股主动</span>
       </div>
-    </header>
+    </motion.header>
   );
 }
 

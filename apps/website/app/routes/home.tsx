@@ -4,6 +4,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/com
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import {
+  FadeIn,
+  StaggerContainer,
+  StaggerItem,
+  MotionCard,
+  MotionButton,
+  AnimatedCounter,
+} from "~/components/motion";
+import { motion, AnimatePresence } from "motion/react";
+import {
   BarChart3,
   Search,
   Shield,
@@ -21,7 +30,8 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { getMarketData, type MarketData } from "~/lib/market-data";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useMotionConfig, fadeInDown, DURATION, EASING, DISTANCE } from "~/lib/motion";
 
 export function meta(_args: Route.MetaArgs) {
   return [
@@ -69,12 +79,14 @@ export default function Home() {
         />
       </main>
       <Footer fetchedAt={data.fetchedAt} />
-      {/* 浮动对比卡片 */}
-      <CompareFloatBar
-        compareList={compareList}
-        etfList={data.etfPremium}
-        onRemove={toggleCompare}
-      />
+      {/* 浮动对比卡片：AnimatePresence 实现入场/退场动画 */}
+      <AnimatePresence>
+        <CompareFloatBar
+          compareList={compareList}
+          etfList={data.etfPremium}
+          onRemove={toggleCompare}
+        />
+      </AnimatePresence>
     </div>
   );
 }
@@ -96,52 +108,121 @@ function Header({
     { label: "美股主动", href: "/active" },
   ];
 
+  // 滚动方向检测：向下滚动隐藏 Header，向上滚动显示
+  const [hidden, setHidden] = useState(false);
+  const lastScrollY = useRef(0);
+  const { shouldReduceMotion } = useMotionConfig();
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentY = window.scrollY;
+      // 顶部 60px 内始终显示，避免遮挡内容
+      if (currentY < 60) {
+        setHidden(false);
+      } else if (currentY > lastScrollY.current + 8) {
+        // 向下滚动超过 8px 触发隐藏，避免抖动
+        setHidden(true);
+      } else if (currentY < lastScrollY.current - 8) {
+        // 向上滚动超过 8px 触发显示
+        setHidden(false);
+      }
+      lastScrollY.current = currentY;
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   return (
-    <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm">
+    <motion.header
+      className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm"
+      // 入场：从顶部滑入；滚动隐藏：向上平移自身高度
+      initial={{ y: -DISTANCE.md, opacity: 0 }}
+      animate={{
+        y: shouldReduceMotion ? 0 : hidden ? -100 : 0,
+        opacity: 1,
+      }}
+      transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+    >
       <div className="container mx-auto flex max-w-6xl items-center justify-between px-3 py-3 sm:px-4">
-        <div className="flex items-center gap-2">
+        <motion.div
+          className="flex items-center gap-2"
+          initial={{ opacity: 0, x: -DISTANCE.xs }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.1, duration: DURATION.normal, ease: EASING.easeOut }}
+        >
           <BarChart3 className="size-5 text-primary" />
           <span className="text-lg font-semibold tracking-tight">ETFVoid</span>
-        </div>
+        </motion.div>
 
-        {/* 桌面端导航 */}
-        <nav className="hidden items-center gap-1 md:flex">
+        {/* 桌面端导航：stagger 入场 */}
+        <StaggerContainer as="nav" className="hidden items-center gap-1 md:flex" stagger={0.04}>
           {navItems.map((item) => (
-            <Button key={item.label} variant="ghost" size="sm" asChild>
-              <Link to={item.href}>{item.label}</Link>
-            </Button>
+            <StaggerItem key={item.label}>
+              <MotionButton variant="ghost" size="sm" asChild>
+                <Link to={item.href}>{item.label}</Link>
+              </MotionButton>
+            </StaggerItem>
           ))}
-        </nav>
+        </StaggerContainer>
 
-        {/* 移动端菜单按钮 */}
-        <Button
+        {/* 移动端菜单按钮：图标切换动画 */}
+        <MotionButton
           variant="ghost"
           size="icon"
           className="md:hidden"
           onClick={onToggleMenu}
           aria-label="菜单"
         >
-          {mobileMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
-        </Button>
+          <AnimatePresence mode="wait" initial={false}>
+            {mobileMenuOpen ? (
+              <motion.span
+                key="close"
+                initial={{ rotate: -90, opacity: 0 }}
+                animate={{ rotate: 0, opacity: 1 }}
+                exit={{ rotate: 90, opacity: 0 }}
+                transition={{ duration: DURATION.fast, ease: EASING.easeInOut }}
+              >
+                <X className="size-5" />
+              </motion.span>
+            ) : (
+              <motion.span
+                key="open"
+                initial={{ rotate: 90, opacity: 0 }}
+                animate={{ rotate: 0, opacity: 1 }}
+                exit={{ rotate: -90, opacity: 0 }}
+                transition={{ duration: DURATION.fast, ease: EASING.easeInOut }}
+              >
+                <Menu className="size-5" />
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </MotionButton>
       </div>
 
-      {/* 移动端下拉菜单 */}
-      {mobileMenuOpen && (
-        <nav className="border-t bg-background px-3 py-2 md:hidden">
-          {navItems.map((item) => (
-            <Button
-              key={item.label}
-              variant="ghost"
-              size="sm"
-              className="w-full justify-start"
-              asChild
-            >
-              <Link to={item.href}>{item.label}</Link>
-            </Button>
-          ))}
-        </nav>
-      )}
-    </header>
+      {/* 移动端下拉菜单：AnimatePresence 展开动画 */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.nav
+            className="border-t bg-background px-3 py-2 md:hidden"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: DURATION.normal, ease: EASING.easeInOut }}
+            style={{ overflow: "hidden" }}
+          >
+            <StaggerContainer className="flex flex-col gap-0.5" stagger={0.05}>
+              {navItems.map((item) => (
+                <StaggerItem key={item.label}>
+                  <MotionButton variant="ghost" size="sm" className="w-full justify-start" asChild>
+                    <Link to={item.href}>{item.label}</Link>
+                  </MotionButton>
+                </StaggerItem>
+              ))}
+            </StaggerContainer>
+          </motion.nav>
+        )}
+      </AnimatePresence>
+    </motion.header>
   );
 }
 
@@ -157,54 +238,70 @@ function HeroSection({ data }: { data: MarketData }) {
 
   return (
     <section className="py-8 md:py-16">
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4 md:gap-4">
-        <MetricCard
-          label="纳斯达克"
-          value={data.nasdaq.price ? data.nasdaq.price.toLocaleString() : "—"}
-          sub={formatChange(data.nasdaq.changePercent)}
-          trend={getTrend(data.nasdaq.changePercent)}
-          highlight
-        />
-        <MetricCard
-          label="标普500"
-          value={data.sp500.price ? data.sp500.price.toLocaleString() : "—"}
-          sub={formatChange(data.sp500.changePercent)}
-          trend={getTrend(data.sp500.changePercent)}
-          highlight
-        />
-        <MetricCard
-          label="道琼斯"
-          value={data.dowJones.price ? data.dowJones.price.toLocaleString() : "—"}
-          sub={formatChange(data.dowJones.changePercent)}
-          trend={getTrend(data.dowJones.changePercent)}
-          highlight
-        />
-        <MetricCard
-          label="ETF均溢价"
-          value={avgPremium > 0 ? `${avgPremium}%` : "—"}
-          sub="当前"
-          trend="neutral"
-          warning={avgPremium > 2}
-        />
-      </div>
+      {/* 首屏指标：stagger 依次入场，数字滚动 */}
+      <StaggerContainer
+        className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4 md:gap-4"
+        stagger={0.1}
+      >
+        <StaggerItem>
+          <MetricCard
+            label="纳斯达克"
+            numericValue={data.nasdaq.price ?? 0}
+            sub={formatChange(data.nasdaq.changePercent)}
+            trend={getTrend(data.nasdaq.changePercent)}
+            highlight
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricCard
+            label="标普500"
+            numericValue={data.sp500.price ?? 0}
+            sub={formatChange(data.sp500.changePercent)}
+            trend={getTrend(data.sp500.changePercent)}
+            highlight
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricCard
+            label="道琼斯"
+            numericValue={data.dowJones.price ?? 0}
+            sub={formatChange(data.dowJones.changePercent)}
+            trend={getTrend(data.dowJones.changePercent)}
+            highlight
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricCard
+            label="ETF均溢价"
+            numericValue={avgPremium}
+            suffix="%"
+            sub="当前"
+            trend="neutral"
+            warning={avgPremium > 2}
+          />
+        </StaggerItem>
+      </StaggerContainer>
     </section>
   );
 }
 
 function MetricCard({
   label,
-  value,
+  numericValue,
   sub,
   trend,
   highlight,
   warning,
+  suffix = "",
 }: {
   label: string;
-  value: string;
+  /** 数值（用于滚动动画），为 0 且无数据时应显示 "—" */
+  numericValue: number;
   sub: string;
   trend: "up" | "down" | "neutral";
   highlight?: boolean;
   warning?: boolean;
+  suffix?: string;
 }) {
   const valueColor = warning
     ? "text-amber-500"
@@ -214,14 +311,19 @@ function MetricCard({
         ? "text-red-500"
         : "text-foreground";
 
+  // 数值为 0 视为无数据，显示 "—"
+  const hasData = numericValue !== 0;
+
   return (
-    <Card className="transition-shadow hover:shadow-md">
+    <MotionCard hover className="h-full">
       <CardContent className="flex flex-col items-center gap-0.5 py-3 text-center sm:gap-1 sm:py-4">
         <span className="text-xs text-muted-foreground">{label}</span>
-        <span className={`text-xl font-bold sm:text-2xl ${valueColor}`}>{value}</span>
+        <span className={`text-xl font-bold sm:text-2xl ${valueColor}`}>
+          {hasData ? <AnimatedCounter value={numericValue} decimals={0} suffix={suffix} /> : "—"}
+        </span>
         <span className="text-xs text-muted-foreground">{sub}</span>
       </CardContent>
-    </Card>
+    </MotionCard>
   );
 }
 
@@ -239,104 +341,136 @@ function MarketIndicators({ data }: { data: MarketData }) {
   return (
     <section className="mb-8 md:mb-10">
       <SectionTitle title="市场情绪指标" />
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 md:gap-4">
+      <StaggerContainer
+        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 md:gap-4"
+        stagger={0.1}
+        inView
+      >
         {/* VIX */}
-        <Card className="transition-shadow hover:shadow-md">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-              <Activity className="size-4 text-amber-500" />
-              VIX 恐慌指数
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-2 flex items-end gap-2">
-              <span className="text-2xl font-bold md:text-3xl">{data.vix.value || "—"}</span>
-              <Badge variant={vixLevel.badgeVariant}>{vixLevel.label}</Badge>
-            </div>
-            <div className="relative mb-1 h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-emerald-500 via-amber-500 to-red-500"
-                style={{ width: `${Math.min(100, (data.vix.value / 40) * 100)}%` }}
-              />
-            </div>
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>0 平静</span>
-              <span>20</span>
-              <span>40 恐慌</span>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              CBOE官方 ·{" "}
-              {data.vix.changePercent !== null
-                ? formatChange(data.vix.changePercent) + " 今日"
-                : "—"}
-            </p>
-          </CardContent>
-        </Card>
+        <StaggerItem>
+          <MotionCard hover className="h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+                <Activity className="size-4 text-amber-500" />
+                VIX 恐慌指数
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-2 flex items-end gap-2">
+                <span className="text-2xl font-bold md:text-3xl">
+                  {data.vix.value ? <AnimatedCounter value={data.vix.value} decimals={2} /> : "—"}
+                </span>
+                <Badge variant={vixLevel.badgeVariant}>{vixLevel.label}</Badge>
+              </div>
+              <ProgressBar value={Math.min(100, (data.vix.value / 40) * 100)} gradient="vix" />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>0 平静</span>
+                <span>20</span>
+                <span>40 恐慌</span>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                CBOE官方 ·{" "}
+                {data.vix.changePercent !== null
+                  ? formatChange(data.vix.changePercent) + " 今日"
+                  : "—"}
+              </p>
+            </CardContent>
+          </MotionCard>
+        </StaggerItem>
 
         {/* 恐慌贪婪指数 */}
-        <Card className="transition-shadow hover:shadow-md">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-              <Gauge className="size-4 text-orange-500" />
-              市场情绪指数
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-2 flex items-end gap-2">
-              <span className="text-2xl font-bold md:text-3xl">{data.fearGreed.value || "—"}</span>
-              <Badge variant={fgLevel.badgeVariant}>{fgLevel.label}</Badge>
-            </div>
-            <div className="relative mb-1 h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-red-500 via-amber-500 to-emerald-500"
-                style={{ width: `${data.fearGreed.value}%` }}
-              />
-            </div>
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>0 极度恐慌</span>
-              <span>50</span>
-              <span>100 极度贪婪</span>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              基于 VIX + 标普500 + 纳斯达克 综合计算
-              {data.fearGreed.previousClose !== null && ` · 昨收 ${data.fearGreed.previousClose}`}
-            </p>
-          </CardContent>
-        </Card>
+        <StaggerItem>
+          <MotionCard hover className="h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+                <Gauge className="size-4 text-orange-500" />
+                市场情绪指数
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-2 flex items-end gap-2">
+                <span className="text-2xl font-bold md:text-3xl">
+                  {data.fearGreed.value ? <AnimatedCounter value={data.fearGreed.value} /> : "—"}
+                </span>
+                <Badge variant={fgLevel.badgeVariant}>{fgLevel.label}</Badge>
+              </div>
+              <ProgressBar value={data.fearGreed.value} gradient="greed" />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>0 极度恐慌</span>
+                <span>50</span>
+                <span>100 极度贪婪</span>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                基于 VIX + 标普500 + 纳斯达克 综合计算
+                {data.fearGreed.previousClose !== null && ` · 昨收 ${data.fearGreed.previousClose}`}
+              </p>
+            </CardContent>
+          </MotionCard>
+        </StaggerItem>
 
         {/* PE 分位 */}
-        <Card className="sm:col-span-2 lg:col-span-1 transition-shadow hover:shadow-md">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-              <LineChart className="size-4 text-red-500" />
-              标普500 PE分位
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-2 flex items-end gap-2">
-              <span className="text-2xl font-bold md:text-3xl">
-                {data.sp500PE.value ? `${data.sp500PE.value}x` : "—"}
-              </span>
-              <Badge variant={peLevel.badgeVariant}>{peLevel.label}</Badge>
-            </div>
-            <div className="relative mb-1 h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className="absolute left-0 top-0 h-full rounded-full bg-gradient-to-r from-emerald-500 via-amber-500 to-red-500"
-                style={{ width: `${pePercentile ?? 50}%` }}
-              />
-            </div>
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>0 低估</span>
-              <span>50</span>
-              <span>100 高估</span>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              历史{pePercentile ?? "—"}%分位 · 来源 {data.sp500PE.source}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+        <StaggerItem className="sm:col-span-2 lg:col-span-1">
+          <MotionCard hover className="h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+                <LineChart className="size-4 text-red-500" />
+                标普500 PE分位
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-2 flex items-end gap-2">
+                <span className="text-2xl font-bold md:text-3xl">
+                  {data.sp500PE.value ? (
+                    <AnimatedCounter value={data.sp500PE.value} decimals={1} suffix="x" />
+                  ) : (
+                    "—"
+                  )}
+                </span>
+                <Badge variant={peLevel.badgeVariant}>{peLevel.label}</Badge>
+              </div>
+              <ProgressBar value={pePercentile ?? 50} gradient="pe" />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>0 低估</span>
+                <span>50</span>
+                <span>100 高估</span>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                历史{pePercentile ?? "—"}%分位 · 来源 {data.sp500PE.source}
+              </p>
+            </CardContent>
+          </MotionCard>
+        </StaggerItem>
+      </StaggerContainer>
     </section>
+  );
+}
+
+/**
+ * 动画进度条：宽度从 0 增长到目标值
+ * 进入视口时触发，支持三种渐变配色
+ */
+function ProgressBar({ value, gradient }: { value: number; gradient: "vix" | "greed" | "pe" }) {
+  const { shouldReduceMotion } = useMotionConfig();
+  const gradientClass = {
+    vix: "bg-gradient-to-r from-emerald-500 via-amber-500 to-red-500",
+    greed: "bg-gradient-to-r from-red-500 via-amber-500 to-emerald-500",
+    pe: "bg-gradient-to-r from-emerald-500 via-amber-500 to-red-500",
+  }[gradient];
+
+  const targetWidth = `${Math.max(0, Math.min(100, value))}%`;
+
+  return (
+    <div className="relative mb-1 h-2 w-full overflow-hidden rounded-full bg-muted">
+      <motion.div
+        className={`absolute left-0 top-0 h-full rounded-full ${gradientClass}`}
+        initial={{ width: 0 }}
+        whileInView={{ width: targetWidth }}
+        viewport={{ amount: 0.5, once: true }}
+        transition={
+          shouldReduceMotion ? { duration: 0 } : { duration: DURATION.slower, ease: EASING.easeOut }
+        }
+      />
+    </div>
   );
 }
 
@@ -356,11 +490,12 @@ function MarketTemperature({ data }: { data: MarketData }) {
   const tempColor = getTemperatureColor(tempScore);
   const fgLevel = getFearGreedLevel(fgScore);
   const vixLevel = getVixLevel(vixScore);
+  const { shouldReduceMotion } = useMotionConfig();
 
   return (
     <section className="mb-8 md:mb-10">
       <SectionTitle title="综合市场温度" />
-      <Card className="transition-shadow hover:shadow-md">
+      <MotionCard hover inView>
         <CardHeader className="pb-2">
           <CardDescription>标普PE分位 + 恐慌贪婪 + VIX 三因子合并信号</CardDescription>
         </CardHeader>
@@ -368,12 +503,19 @@ function MarketTemperature({ data }: { data: MarketData }) {
           <div className="mb-3 flex items-center gap-3">
             <span className={`text-xl font-bold md:text-2xl ${tempColor}`}>{tempLabel}</span>
           </div>
-          {/* 温度条 */}
+          {/* 温度条：指针从左端滑到目标位置 */}
           <div className="relative mb-2 h-3 w-full overflow-hidden rounded-full md:h-4">
             <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 via-amber-400 to-red-500" />
-            <div
+            <motion.div
               className="absolute top-0 h-full w-0.5 -translate-x-1/2 bg-foreground shadow-sm"
-              style={{ left: `${tempScore}%` }}
+              initial={{ left: "0%" }}
+              whileInView={{ left: `${Math.max(0, Math.min(100, tempScore))}%` }}
+              viewport={{ amount: 0.5, once: true }}
+              transition={
+                shouldReduceMotion
+                  ? { duration: 0 }
+                  : { duration: DURATION.slower, ease: EASING.easeOut, delay: 0.2 }
+              }
             />
           </div>
           <div className="flex justify-between text-xs text-muted-foreground">
@@ -382,27 +524,37 @@ function MarketTemperature({ data }: { data: MarketData }) {
             <span>危险区</span>
           </div>
 
-          {/* 因子明细 */}
-          <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3">
-            <TempFactor
-              label="标普500 PE"
-              value={data.sp500PE.value ? `${data.sp500PE.value}x` : "—"}
-              status={pePercentile > 80 ? "极度高估" : pePercentile > 60 ? "偏高" : "合理"}
-              level={pePercentile > 80 ? "danger" : pePercentile > 60 ? "neutral" : "opportunity"}
-            />
-            <TempFactor
-              label="恐慌贪婪"
-              value={`${fgScore}分`}
-              status={fgLevel.label}
-              level={fgScore < 30 ? "opportunity" : fgScore > 70 ? "danger" : "neutral"}
-            />
-            <TempFactor
-              label="VIX 波动"
-              value={`${vixScore}`}
-              status={vixLevel.label}
-              level={vixScore > 25 ? "opportunity" : vixScore < 15 ? "danger" : "neutral"}
-            />
-          </div>
+          {/* 因子明细：stagger 入场 */}
+          <StaggerContainer
+            className="mt-4 grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3"
+            stagger={0.08}
+            inView
+          >
+            <StaggerItem>
+              <TempFactor
+                label="标普500 PE"
+                value={data.sp500PE.value ? `${data.sp500PE.value}x` : "—"}
+                status={pePercentile > 80 ? "极度高估" : pePercentile > 60 ? "偏高" : "合理"}
+                level={pePercentile > 80 ? "danger" : pePercentile > 60 ? "neutral" : "opportunity"}
+              />
+            </StaggerItem>
+            <StaggerItem>
+              <TempFactor
+                label="恐慌贪婪"
+                value={`${fgScore}分`}
+                status={fgLevel.label}
+                level={fgScore < 30 ? "opportunity" : fgScore > 70 ? "danger" : "neutral"}
+              />
+            </StaggerItem>
+            <StaggerItem>
+              <TempFactor
+                label="VIX 波动"
+                value={`${vixScore}`}
+                status={vixLevel.label}
+                level={vixScore > 25 ? "opportunity" : vixScore < 15 ? "danger" : "neutral"}
+              />
+            </StaggerItem>
+          </StaggerContainer>
 
           <p className="mt-4 text-xs text-muted-foreground">
             {tempScore > 65
@@ -412,7 +564,7 @@ function MarketTemperature({ data }: { data: MarketData }) {
                 : "信号混合，维持正常仓位，注意止损"}
           </p>
         </CardContent>
-      </Card>
+      </MotionCard>
     </section>
   );
 }
@@ -448,27 +600,37 @@ function ToolboxSection() {
   return (
     <section className="mb-8 md:mb-10">
       <SectionTitle title="投资工具箱" />
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 md:gap-4">
-        <ToolCard
-          icon={<Search className="size-5" />}
-          title="基金对比"
-          description="净值趋势、阶段收益、费率、风险（波动/回撤）、持仓与基金经理履历一览"
-          href="/cn/funds"
-        />
-        <ToolCard
-          icon={<BarChart3 className="size-5" />}
-          title="基金分析"
-          description="单基金深度分析：净值走势、全周期收益、最大回撤、月度热力图与经理履历"
-          href="/cn/fund"
-        />
-        <ToolCard
-          icon={<Shield className="size-5" />}
-          title="稳健收益"
-          description="全球国债、投资级公司债与REITs，信用评级、最大回撤与入场指南"
-          href="/global/stable"
-          extra="美国国债 4.8% vs 国内存款 1.45%"
-        />
-      </div>
+      <StaggerContainer
+        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 md:gap-4"
+        stagger={0.1}
+        inView
+      >
+        <StaggerItem>
+          <ToolCard
+            icon={<Search className="size-5" />}
+            title="基金对比"
+            description="净值趋势、阶段收益、费率、风险（波动/回撤）、持仓与基金经理履历一览"
+            href="/cn/funds"
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <ToolCard
+            icon={<BarChart3 className="size-5" />}
+            title="基金分析"
+            description="单基金深度分析：净值走势、全周期收益、最大回撤、月度热力图与经理履历"
+            href="/cn/fund"
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <ToolCard
+            icon={<Shield className="size-5" />}
+            title="稳健收益"
+            description="全球国债、投资级公司债与REITs，信用评级、最大回撤与入场指南"
+            href="/global/stable"
+            extra="美国国债 4.8% vs 国内存款 1.45%"
+          />
+        </StaggerItem>
+      </StaggerContainer>
     </section>
   );
 }
@@ -489,10 +651,16 @@ function ToolCard({
   extra?: string;
 }) {
   return (
-    <Card className="flex flex-col transition-shadow hover:shadow-md">
+    <MotionCard hover className="flex h-full flex-col">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-          <span className="text-primary">{icon}</span>
+          <motion.span
+            className="text-primary"
+            whileHover={{ scale: 1.1, rotate: -5 }}
+            transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
+          >
+            {icon}
+          </motion.span>
           {title}
         </CardTitle>
         <CardDescription className="min-h-[2.5rem] text-xs md:text-sm">
@@ -523,7 +691,7 @@ function ToolCard({
           </Button>
         )}
       </CardContent>
-    </Card>
+    </MotionCard>
   );
 }
 
@@ -622,7 +790,7 @@ function PremiumAlertSection({
       <SectionTitle title="ETF 溢价预警" />
 
       {/* 搜索栏 */}
-      <div className="mb-3 flex items-center gap-2 md:mb-4">
+      <FadeIn className="mb-3 flex items-center gap-2 md:mb-4" delay={0.1}>
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
@@ -633,202 +801,252 @@ function PremiumAlertSection({
             className="h-9 w-full rounded-md border bg-background pl-9 pr-3 text-sm outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
-        {searchQuery && (
-          <span className="text-xs text-muted-foreground whitespace-nowrap">
-            {filtered.length}/{etfList.length} 只
-          </span>
-        )}
-      </div>
+        <AnimatePresence>
+          {searchQuery && (
+            <motion.span
+              initial={{ opacity: 0, width: 0 }}
+              animate={{ opacity: 1, width: "auto" }}
+              exit={{ opacity: 0, width: 0 }}
+              transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
+              className="text-xs text-muted-foreground whitespace-nowrap"
+            >
+              {filtered.length}/{etfList.length} 只
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </FadeIn>
 
       <p className="mb-3 text-xs text-muted-foreground md:mb-4">
         溢价 &gt;1% 注意 · &gt;2% 偏高 · &gt;3% 极高建议等待收窄
         {searchQuery && filtered.length === 0 && " · 未找到匹配基金"}
       </p>
 
-      {etfList.length === 0 ? (
-        <Card>
-          <CardContent className="py-8 text-center">
-            <RefreshCw className="mx-auto mb-2 size-6 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">暂时无法获取ETF溢价数据，请稍后刷新</p>
-          </CardContent>
-        </Card>
-      ) : filtered.length === 0 ? (
-        <Card>
-          <CardContent className="py-8 text-center">
-            <Search className="mx-auto mb-2 size-6 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">未找到匹配 "{searchQuery}" 的基金</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            {/* 桌面端表格 */}
-            <div className="hidden overflow-x-auto md:block">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-xs text-muted-foreground">
-                    <th
-                      className="cursor-pointer px-4 py-3 text-left font-medium select-none hover:text-foreground"
-                      onClick={() => toggleSort("code")}
-                    >
-                      代码 <SortIcon field="code" />
-                    </th>
-                    <th
-                      className="cursor-pointer px-4 py-3 text-left font-medium select-none hover:text-foreground"
-                      onClick={() => toggleSort("name")}
-                    >
-                      名称 <SortIcon field="name" />
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium">跟踪指数</th>
-                    <th
-                      className="cursor-pointer px-4 py-3 text-right font-medium select-none hover:text-foreground"
-                      onClick={() => toggleSort("premium")}
-                    >
-                      溢价率 <SortIcon field="premium" />
-                    </th>
-                    <th
-                      className="cursor-pointer px-4 py-3 text-right font-medium select-none hover:text-foreground"
-                      onClick={() => toggleSort("changePercent")}
-                    >
-                      涨跌幅 <SortIcon field="changePercent" />
-                    </th>
-                    <th
-                      className="cursor-pointer px-4 py-3 text-right font-medium select-none hover:text-foreground"
-                      onClick={() => toggleSort("scale")}
-                    >
-                      规模 <SortIcon field="scale" />
-                    </th>
-                    <th className="px-4 py-3 text-center font-medium">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.map((row) => (
-                    <tr
-                      key={row.code}
-                      className="border-b last:border-b-0 transition-colors hover:bg-muted/50"
-                    >
-                      <td className="px-4 py-3 font-mono text-xs">
-                        <Link to={`/fund/${row.code}`} className="text-primary hover:underline">
-                          {row.code}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 text-xs">
-                        <Link
-                          to={`/fund/${row.code}`}
-                          className="hover:text-primary hover:underline"
+      <AnimatePresence mode="wait">
+        {etfList.length === 0 ? (
+          <motion.div
+            key="empty-data"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+          >
+            <Card>
+              <CardContent className="py-8 text-center">
+                <RefreshCw className="mx-auto mb-2 size-6 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">暂时无法获取ETF溢价数据，请稍后刷新</p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ) : filtered.length === 0 ? (
+          <motion.div
+            key="empty-search"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+          >
+            <Card>
+              <CardContent className="py-8 text-center">
+                <Search className="mx-auto mb-2 size-6 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">未找到匹配 "{searchQuery}" 的基金</p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="table"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+          >
+            <Card>
+              <CardContent className="p-0">
+                {/* 桌面端表格 */}
+                <div className="hidden overflow-x-auto md:block">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-xs text-muted-foreground">
+                        <th
+                          className="cursor-pointer px-4 py-3 text-left font-medium select-none hover:text-foreground"
+                          onClick={() => toggleSort("code")}
                         >
-                          {row.name}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">{row.index}</td>
-                      <td className="px-4 py-3 text-right">
-                        <PremiumBadge value={row.premium} />
-                      </td>
-                      <td
-                        className={`px-4 py-3 text-right text-xs ${
-                          row.changePercent > 0
-                            ? "text-emerald-500"
-                            : row.changePercent < 0
-                              ? "text-red-500"
-                              : ""
-                        }`}
+                          代码 <SortIcon field="code" />
+                        </th>
+                        <th
+                          className="cursor-pointer px-4 py-3 text-left font-medium select-none hover:text-foreground"
+                          onClick={() => toggleSort("name")}
+                        >
+                          名称 <SortIcon field="name" />
+                        </th>
+                        <th className="px-4 py-3 text-left font-medium">跟踪指数</th>
+                        <th
+                          className="cursor-pointer px-4 py-3 text-right font-medium select-none hover:text-foreground"
+                          onClick={() => toggleSort("premium")}
+                        >
+                          溢价率 <SortIcon field="premium" />
+                        </th>
+                        <th
+                          className="cursor-pointer px-4 py-3 text-right font-medium select-none hover:text-foreground"
+                          onClick={() => toggleSort("changePercent")}
+                        >
+                          涨跌幅 <SortIcon field="changePercent" />
+                        </th>
+                        <th
+                          className="cursor-pointer px-4 py-3 text-right font-medium select-none hover:text-foreground"
+                          onClick={() => toggleSort("scale")}
+                        >
+                          规模 <SortIcon field="scale" />
+                        </th>
+                        <th className="px-4 py-3 text-center font-medium">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sorted.map((row) => (
+                        <tr
+                          key={row.code}
+                          className="border-b last:border-b-0 transition-colors hover:bg-muted/50"
+                        >
+                          <td className="px-4 py-3 font-mono text-xs">
+                            <Link to={`/fund/${row.code}`} className="text-primary hover:underline">
+                              {row.code}
+                            </Link>
+                          </td>
+                          <td className="px-4 py-3 text-xs">
+                            <Link
+                              to={`/fund/${row.code}`}
+                              className="hover:text-primary hover:underline"
+                            >
+                              {row.name}
+                            </Link>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground">{row.index}</td>
+                          <td className="px-4 py-3 text-right">
+                            <PremiumBadge value={row.premium} />
+                          </td>
+                          <td
+                            className={`px-4 py-3 text-right text-xs ${
+                              row.changePercent > 0
+                                ? "text-emerald-500"
+                                : row.changePercent < 0
+                                  ? "text-red-500"
+                                  : ""
+                            }`}
+                          >
+                            {formatChange(row.changePercent)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-xs text-muted-foreground">
+                            {row.scale}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <Link
+                                to={`/cn/fund?code=${row.code}`}
+                                className="inline-flex items-center gap-0.5 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                                title="分析"
+                              >
+                                <TrendingUp className="size-3" />
+                                <span className="hidden lg:inline">分析</span>
+                              </Link>
+                              <motion.button
+                                onClick={() => onToggleCompare(row.code)}
+                                whileTap={{ scale: 0.9 }}
+                                transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
+                                className={`inline-flex items-center gap-0.5 rounded-sm px-1.5 py-0.5 text-xs transition-colors ${
+                                  compareList.includes(row.code)
+                                    ? "bg-primary/15 text-primary"
+                                    : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                                }`}
+                                title={compareList.includes(row.code) ? "移除对比" : "加入对比"}
+                              >
+                                <GitCompare className="size-3" />
+                                <span className="hidden lg:inline">
+                                  {compareList.includes(row.code) ? "已选" : "对比"}
+                                </span>
+                              </motion.button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 移动端卡片列表：layout 动画实现排序/过滤平滑过渡 */}
+                <motion.div layout className="md:hidden">
+                  <AnimatePresence initial={false}>
+                    {sorted.map((row) => (
+                      <motion.div
+                        key={row.code}
+                        layout
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{
+                          duration: DURATION.normal,
+                          ease: EASING.easeOut,
+                        }}
+                        className="block overflow-hidden border-b last:border-b-0 px-3 py-3 hover:bg-muted/50"
                       >
-                        {formatChange(row.changePercent)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-xs text-muted-foreground">
-                        {row.scale}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex items-center justify-center gap-1">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="font-mono text-xs text-muted-foreground">
+                              {row.code}
+                            </span>
+                            <span className="ml-2 text-sm">{row.name}</span>
+                          </div>
+                          <PremiumBadge value={row.premium} />
+                        </div>
+                        <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                          <span>{row.index}</span>
+                          <span>
+                            涨跌{" "}
+                            <span
+                              className={
+                                row.changePercent > 0
+                                  ? "text-emerald-500"
+                                  : row.changePercent < 0
+                                    ? "text-red-500"
+                                    : ""
+                              }
+                            >
+                              {formatChange(row.changePercent)}
+                            </span>
+                            {" · "}
+                            规模 {row.scale}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex items-center justify-end gap-2">
                           <Link
                             to={`/cn/fund?code=${row.code}`}
-                            className="inline-flex items-center gap-0.5 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                            title="分析"
+                            className="inline-flex items-center gap-1 rounded-sm border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
                           >
                             <TrendingUp className="size-3" />
-                            <span className="hidden lg:inline">分析</span>
+                            分析
                           </Link>
-                          <button
+                          <motion.button
                             onClick={() => onToggleCompare(row.code)}
-                            className={`inline-flex items-center gap-0.5 rounded-sm px-1.5 py-0.5 text-xs transition-colors ${
+                            whileTap={{ scale: 0.95 }}
+                            transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
+                            className={`inline-flex items-center gap-1 rounded-sm border px-2 py-1 text-xs transition-colors ${
                               compareList.includes(row.code)
-                                ? "bg-primary/15 text-primary"
+                                ? "border-primary/30 bg-primary/10 text-primary"
                                 : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
                             }`}
-                            title={compareList.includes(row.code) ? "移除对比" : "加入对比"}
                           >
                             <GitCompare className="size-3" />
-                            <span className="hidden lg:inline">
-                              {compareList.includes(row.code) ? "已选" : "对比"}
-                            </span>
-                          </button>
+                            {compareList.includes(row.code) ? "已选" : "对比"}
+                          </motion.button>
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* 移动端卡片列表 */}
-            <div className="md:hidden">
-              {sorted.map((row) => (
-                <div
-                  key={row.code}
-                  className="block border-b last:border-b-0 px-3 py-3 transition-colors hover:bg-muted/50"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="font-mono text-xs text-muted-foreground">{row.code}</span>
-                      <span className="ml-2 text-sm">{row.name}</span>
-                    </div>
-                    <PremiumBadge value={row.premium} />
-                  </div>
-                  <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                    <span>{row.index}</span>
-                    <span>
-                      涨跌{" "}
-                      <span
-                        className={
-                          row.changePercent > 0
-                            ? "text-emerald-500"
-                            : row.changePercent < 0
-                              ? "text-red-500"
-                              : ""
-                        }
-                      >
-                        {formatChange(row.changePercent)}
-                      </span>
-                      {" · "}
-                      规模 {row.scale}
-                    </span>
-                  </div>
-                  <div className="mt-2 flex items-center justify-end gap-2">
-                    <Link
-                      to={`/cn/fund?code=${row.code}`}
-                      className="inline-flex items-center gap-1 rounded-sm border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                    >
-                      <TrendingUp className="size-3" />
-                      分析
-                    </Link>
-                    <button
-                      onClick={() => onToggleCompare(row.code)}
-                      className={`inline-flex items-center gap-1 rounded-sm border px-2 py-1 text-xs transition-colors ${
-                        compareList.includes(row.code)
-                          ? "border-primary/30 bg-primary/10 text-primary"
-                          : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                      }`}
-                    >
-                      <GitCompare className="size-3" />
-                      {compareList.includes(row.code) ? "已选" : "对比"}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </motion.div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 }
@@ -866,6 +1084,8 @@ function CompareFloatBar({
   etfList: Array<{ code: string; name: string }>;
   onRemove: (code: string) => void;
 }) {
+  const { shouldReduceMotion } = useMotionConfig();
+
   if (compareList.length === 0) return null;
 
   const selectedFunds = compareList
@@ -873,7 +1093,13 @@ function CompareFloatBar({
     .filter(Boolean) as Array<{ code: string; name: string }>;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 max-w-xs animate-in fade-in slide-in-from-bottom-2 duration-200">
+    <motion.div
+      className="fixed bottom-4 right-4 z-50 max-w-xs"
+      initial={shouldReduceMotion ? false : { opacity: 0, y: 20, scale: 0.9 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 20, scale: 0.9 }}
+      transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+    >
       <div className="rounded-lg border bg-card p-3 shadow-lg">
         <div className="mb-2 flex items-center justify-between">
           <span className="text-xs font-medium">已选对比 ({compareList.length})</span>
@@ -896,7 +1122,7 @@ function CompareFloatBar({
           ))}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 

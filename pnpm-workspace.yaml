@@ -19,6 +19,7 @@ catalog:
   radix-ui: ^1.5.0
   lucide-react: ^1.17.0
   "@fontsource-variable/noto-serif": ^5.2.9
+  motion: ^12.40.0
 overrides:
   vite: "catalog:"
   vitest: "catalog:"
