@@ -402,6 +402,64 @@ export async function getSp500PE(): Promise<{
   ); // PE数据缓存30分钟
 }
 
+// ==================== 纳斯达克100 PE ====================
+
+/**
+ * 获取纳斯达克100指数PE
+ * 数据源：worldperatio.com（优先）→ 基于QQQ估算（降级）
+ */
+export async function getNasdaq100PE(): Promise<{
+  value: number | null;
+  source: string;
+}> {
+  return cachedFetch(
+    "nasdaq100-pe",
+    async () => {
+      // 方案1：从 worldperatio.com 抓取
+      try {
+        const res = await fetch("https://worldperatio.com/index/nasdaq-100/", {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          },
+          signal: AbortSignal.timeout(10_000),
+        });
+        const html = await res.text();
+        // 匹配页面中的PE值，格式如 "P/E Ratio  32.47"
+        const patterns = [/P\/E Ratio\s+([\d.]+)/, /PE Ratio[^<]*?<[^>]*>([\d.]+)/];
+        for (const pattern of patterns) {
+          const match = html.match(pattern);
+          const val = match ? parseFloat(match[1]) : 0;
+          // 纳指100 PE历史范围约 12-40
+          if (val >= 12 && val <= 45) {
+            return { value: Math.round(val * 100) / 100, source: "worldperatio.com" };
+          }
+        }
+      } catch {
+        // worldperatio.com 不可用
+      }
+
+      // 方案2：基于QQQ ETF价格估算
+      try {
+        const qqq = await getSinaUSStock("qqq");
+        if (qqq.price > 0) {
+          // QQQ约537时PE约32，粗略估算
+          const basePrice = 537;
+          const basePE = 32;
+          const estimatedPE = Math.round((qqq.price / basePrice) * basePE * 100) / 100;
+          if (estimatedPE >= 12 && estimatedPE <= 45) {
+            return { value: estimatedPE, source: "估算(基于QQQ)" };
+          }
+        }
+      } catch {
+        // 估算也失败
+      }
+
+      return { value: null, source: "unavailable" };
+    },
+    30 * 60 * 1000,
+  ); // PE数据缓存30分钟
+}
+
 // ==================== 东方财富 ETF 溢价数据 ====================
 
 /** 东方财富API响应 */
@@ -649,6 +707,11 @@ export interface MarketData {
     value: number | null;
     source: string;
   };
+  // 纳指100 PE
+  nasdaq100PE: {
+    value: number | null;
+    source: string;
+  };
   // ETF溢价
   etfPremium: Array<{
     code: string;
@@ -669,19 +732,21 @@ export interface MarketData {
 /** 获取首页所有市场数据 */
 export async function getMarketData(): Promise<MarketData> {
   // 并行请求所有数据
-  const [indices, vix, fearGreed, sp500PE, etfPremium, qdiiFunds] = await Promise.all([
-    getSinaIndexData(["int_nasdaq", "int_sp500", "int_dji", "int_nasdaq100"]),
-    getVIX(),
-    getFearGreedIndex(),
-    getSp500PE(),
-    getETFPremiumData(),
-    getAllQDIIFundData(),
-  ]);
+  const [indices, vix, fearGreed, sp500PE, nasdaq100PE, etfPremium, qdiiFunds, nasdaq100Stock] =
+    await Promise.all([
+      getSinaIndexData(["int_nasdaq", "int_sp500", "int_dji"]),
+      getVIX(),
+      getFearGreedIndex(),
+      getSp500PE(),
+      getNasdaq100PE(),
+      getETFPremiumData(),
+      getAllQDIIFundData(),
+      getSinaUSStock("ndx"),
+    ]);
 
   const nasdaq = indices.find((i) => i.code === "int_nasdaq");
   const sp500 = indices.find((i) => i.code === "int_sp500");
   const dowJones = indices.find((i) => i.code === "int_dji");
-  const nasdaq100 = indices.find((i) => i.code === "int_nasdaq100");
 
   return {
     nasdaq: {
@@ -700,13 +765,14 @@ export async function getMarketData(): Promise<MarketData> {
       changePercent: dowJones?.changePercent ?? 0,
     },
     nasdaq100: {
-      price: nasdaq100?.price ?? 0,
-      change: nasdaq100?.change ?? 0,
-      changePercent: nasdaq100?.changePercent ?? 0,
+      price: nasdaq100Stock.price,
+      change: nasdaq100Stock.price - nasdaq100Stock.prevClose,
+      changePercent: nasdaq100Stock.changePercent,
     },
     vix,
     fearGreed,
     sp500PE,
+    nasdaq100PE,
     etfPremium,
     qdiiFunds,
     fetchedAt: new Date().toISOString(),

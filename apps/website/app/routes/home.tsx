@@ -321,12 +321,17 @@ function MarketIndicators({ data }: { data: MarketData }) {
   // PE 分位（基于历史分位估算，PE > 30 为高估区间）
   const pePercentile = data.sp500PE.value ? estimatePePercentile(data.sp500PE.value) : null;
   const peLevel = getPeLevel(pePercentile);
+  // 纳指100 PE 分位
+  const ndxPePercentile = data.nasdaq100PE.value
+    ? estimateNasdaq100PePercentile(data.nasdaq100PE.value)
+    : null;
+  const ndxPeLevel = getPeLevel(ndxPePercentile);
 
   return (
     <section className="mb-8 md:mb-10">
       <SectionTitle title="市场情绪指标" />
       <StaggerContainer
-        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 md:gap-4"
+        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 md:gap-4"
         stagger={0.1}
         inView
       >
@@ -420,6 +425,39 @@ function MarketIndicators({ data }: { data: MarketData }) {
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
                 历史{pePercentile ?? "—"}%分位 · 来源 {data.sp500PE.source}
+              </p>
+            </CardContent>
+          </MotionCard>
+        </StaggerItem>
+
+        {/* 纳指100 PE 分位 */}
+        <StaggerItem className="sm:col-span-2 lg:col-span-1">
+          <MotionCard hover className="h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+                <LineChart className="size-4 text-purple-500" />
+                纳指100 PE分位
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-2 flex items-end gap-2">
+                <span className="text-2xl font-bold md:text-3xl">
+                  {data.nasdaq100PE.value ? (
+                    <AnimatedCounter value={data.nasdaq100PE.value} decimals={1} suffix="x" />
+                  ) : (
+                    "—"
+                  )}
+                </span>
+                <Badge variant={ndxPeLevel.badgeVariant}>{ndxPeLevel.label}</Badge>
+              </div>
+              <ProgressBar value={ndxPePercentile ?? 50} gradient="pe" />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>0 低估</span>
+                <span>50</span>
+                <span>100 高估</span>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                历史{ndxPePercentile ?? "—"}%分位 · 来源 {data.nasdaq100PE.source}
               </p>
             </CardContent>
           </MotionCard>
@@ -1192,6 +1230,17 @@ function estimatePePercentile(pe: number): number {
   const median = 17;
   const stdDev = 6;
   // 简化的累积分布函数估算
+  const z = (pe - median) / stdDev;
+  const percentile = Math.round(normalCDF(z) * 100);
+  return Math.max(0, Math.min(100, percentile));
+}
+
+/** 根据PE值估算纳指100历史分位（基于纳指100历史PE分布） */
+function estimateNasdaq100PePercentile(pe: number): number {
+  // 纳指100 PE历史中位数约24.5，长期均值约28.77
+  // 标准差约5.4（基于20年数据）
+  const median = 24.5;
+  const stdDev = 5.4;
   const z = (pe - median) / stdDev;
   const percentile = Math.round(normalCDF(z) * 100);
   return Math.max(0, Math.min(100, percentile));
