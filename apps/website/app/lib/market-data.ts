@@ -1903,3 +1903,223 @@ export async function validateFundCode(code: string): Promise<boolean> {
     return false;
   }
 }
+
+// ==================== QDII 基金估值数据 ====================
+
+/** 市场时段 */
+export type MarketSession = "pre" | "intraday" | "after";
+
+/** QDII 基金估值数据 */
+export interface QDIIValuationData {
+  /** 基金代码 */
+  code: string;
+  /** 基金名称 */
+  name: string;
+  /** 分类 */
+  category: QDIICategory;
+  /** 分类标签 */
+  categoryLabel: string;
+  /** 估算净值（实时估值） */
+  estimatedNav: number;
+  /** 估算涨幅(%) */
+  estimatedChange: number;
+  /** 估值时间 */
+  estimationTime: string;
+  /** 最新实际净值 */
+  actualNav: number | null;
+  /** 净值日期 */
+  navDate: string;
+  /** 估值与实际净值偏差(%)，正值表示估值高于净值 */
+  deviation: number | null;
+  /** 当前市场时段 */
+  marketSession: MarketSession;
+  /** 数据获取是否失败 */
+  error: boolean;
+}
+
+/** 判断当前市场时段（基于北京时间） */
+function getMarketSession(): MarketSession {
+  const now = new Date();
+  // 转换为北京时间
+  const bjHour = (now.getUTCHours() + 8) % 24;
+  const bjMinute = now.getUTCMinutes();
+  const bjTime = bjHour * 60 + bjMinute;
+
+  // A股交易时间 9:30-15:00
+  if (bjTime >= 9 * 60 + 30 && bjTime < 15 * 60) return "intraday";
+  // 盘前：6:00-9:30
+  if (bjTime >= 6 * 60 && bjTime < 9 * 60 + 30) return "pre";
+  // 盘后
+  return "after";
+}
+
+/** 合并所有 QDII 场外基金代码（含场内 ETF 联接基金） */
+const ALL_QDII_VALUATION_CODES = [...NASDAQ_100_OTC_CODES, ...SP500_OTC_CODES, ...ACTIVE_US_CODES];
+
+/**
+ * 批量获取 QDII 基金实时估值数据
+ * 数据源：天天基金 fundgz.1234567.com.cn
+ * 格式：jsonpgz({"fundcode":"xxx","name":"xxx","jzrq":"2024-01-01","dwjz":"1.0000","gsz":"1.0100","gszzl":"1.00","gztime":"2024-01-02 15:00"});
+ */
+export async function getQDIIValuationData(): Promise<QDIIValuationData[]> {
+  const session = getMarketSession();
+  const codes = ALL_QDII_VALUATION_CODES;
+
+  // 分类映射
+  const nasdaqSet = new Set(NASDAQ_100_OTC_CODES);
+  const sp500Set = new Set(SP500_OTC_CODES);
+
+  // 并行获取所有基金的估值数据（每只单独请求，fundgz 接口不支持批量）
+  // 限制并发数，避免请求过多被限流
+  const CONCURRENCY = 10;
+  const results: QDIIValuationData[] = [];
+
+  for (let i = 0; i < codes.length; i += CONCURRENCY) {
+    const batch = codes.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.allSettled(
+      batch.map(async (code) => {
+        try {
+          const text = await fetchText(`http://fundgz.1234567.com.cn/js/${code}.js`, {
+            headers: { Referer: "https://fund.eastmoney.com/" },
+          });
+
+          // 解析 jsonpgz({...})
+          const jsonMatch = text.match(/jsonpgz\((.*)\);?/);
+          if (!jsonMatch) {
+            return createEmptyValuation(code, session, nasdaqSet, sp500Set, true);
+          }
+
+          const data = JSON.parse(jsonMatch[1]);
+          const estimatedNav = parseFloat(data.gsz) || 0;
+          const estimatedChange = parseFloat(data.gszzl) || 0;
+          const actualNav = parseFloat(data.dwjz) || null;
+          const navDate = data.jzrq || "";
+          const estimationTime = data.gztime || "";
+
+          // 计算估值偏差：(估算净值 - 实际净值) / 实际净值 * 100
+          let deviation: number | null = null;
+          if (actualNav && actualNav > 0 && estimatedNav > 0) {
+            deviation = Math.round(((estimatedNav - actualNav) / actualNav) * 10000) / 100;
+          }
+
+          const category: QDIICategory = nasdaqSet.has(code)
+            ? "nasdaq100"
+            : sp500Set.has(code)
+              ? "sp500"
+              : "active";
+          const categoryLabel =
+            category === "nasdaq100" ? "纳指100" : category === "sp500" ? "标普500" : "主动型";
+
+          return {
+            code,
+            name: data.name || code,
+            category,
+            categoryLabel,
+            estimatedNav,
+            estimatedChange,
+            estimationTime,
+            actualNav,
+            navDate,
+            deviation,
+            marketSession: session,
+            error: false,
+          } satisfies QDIIValuationData;
+        } catch {
+          return createEmptyValuation(code, session, nasdaqSet, sp500Set, true);
+        }
+      }),
+    );
+
+    for (const r of batchResults) {
+      if (r.status === "fulfilled") {
+        results.push(r.value);
+      }
+    }
+  }
+
+  return results;
+}
+
+/** 创建空的估值数据（获取失败时使用） */
+function createEmptyValuation(
+  code: string,
+  session: MarketSession,
+  nasdaqSet: Set<string>,
+  sp500Set: Set<string>,
+  error: boolean,
+): QDIIValuationData {
+  const category: QDIICategory = nasdaqSet.has(code)
+    ? "nasdaq100"
+    : sp500Set.has(code)
+      ? "sp500"
+      : "active";
+  const categoryLabel =
+    category === "nasdaq100" ? "纳指100" : category === "sp500" ? "标普500" : "主动型";
+
+  return {
+    code,
+    name: code,
+    category,
+    categoryLabel,
+    estimatedNav: 0,
+    estimatedChange: 0,
+    estimationTime: "",
+    actualNav: null,
+    navDate: "",
+    deviation: null,
+    marketSession: session,
+    error,
+  };
+}
+
+/**
+ * 获取单只 QDII 基金的估值历史数据（最近N个交易日）
+ * 用于估值走势图
+ */
+export async function getQDIIValuationHistory(
+  code: string,
+  days = 30,
+): Promise<
+  Array<{
+    date: string;
+    estimatedNav: number;
+    actualNav: number | null;
+    estimatedChange: number;
+  }>
+> {
+  return cachedFetch(`qdii-val-history-${code}-${days}`, async () => {
+    try {
+      // 从东方财富历史净值API获取
+      const data = await fetchJson<{
+        Data?: {
+          LSJZList?: Array<{
+            FSRQ: string;
+            DWJZ: string;
+            JZZZL: string;
+          }>;
+        };
+      }>(`https://api.fund.eastmoney.com/f10/lsjz?fundCode=${code}&pageIndex=1&pageSize=${days}`, {
+        headers: {
+          Referer: "https://fund.eastmoney.com/",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        },
+      });
+
+      const list = data?.Data?.LSJZList ?? [];
+      if (list.length === 0) return [];
+
+      // 反转使日期从旧到新
+      const reversed = [...list].reverse();
+
+      return reversed.map((item) => ({
+        date: item.FSRQ,
+        estimatedNav: parseFloat(item.DWJZ) || 0,
+        actualNav: parseFloat(item.DWJZ) || null,
+        estimatedChange: parseFloat(item.JZZZL) || 0,
+      }));
+    } catch {
+      return [];
+    }
+  });
+}

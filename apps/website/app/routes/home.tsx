@@ -622,7 +622,11 @@ function ToolboxSection() {
   return (
     <section className="mb-8 md:mb-10">
       <SectionTitle title="投资工具箱" />
-      <StaggerContainer className="grid gap-3 sm:grid-cols-2 md:gap-4" stagger={0.1} inView>
+      <StaggerContainer
+        className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 md:gap-4"
+        stagger={0.1}
+        inView
+      >
         <StaggerItem className="[&>div]:h-full">
           <ToolCard
             icon={<Search className="size-5" />}
@@ -637,6 +641,14 @@ function ToolboxSection() {
             title="基金分析"
             description="单基金深度分析：净值走势、全周期收益、最大回撤、月度热力图与经理履历"
             href="/cn/fund"
+          />
+        </StaggerItem>
+        <StaggerItem className="[&>div]:h-full">
+          <ToolCard
+            icon={<Gauge className="size-5" />}
+            title="QDII估值"
+            description="QDII基金实时估值追踪：盘中估值、估值偏差分析、估值走势与涨跌预警"
+            href="/qdii-valuation"
           />
         </StaggerItem>
       </StaggerContainer>

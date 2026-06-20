@@ -8,6 +8,7 @@ export default [
   route("cn/fund", "routes/analysis.tsx"),
   route("global/stable", "routes/stable.tsx"),
   route("qdii", "routes/qdii.tsx"),
+  route("qdii-valuation", "routes/qdii-valuation.tsx"),
   route("nasdaq", "routes/nasdaq.tsx"),
   route("sp500", "routes/sp500.tsx"),
   route("etf", "routes/etf.tsx"),
