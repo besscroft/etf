@@ -14,35 +14,48 @@ import {
   Filter,
   TrendingUp,
   TrendingDown,
+  GitCompare,
+  Search,
 } from "lucide-react";
-import { getSP500OTCData, type OTCFundData } from "~/lib/market-data";
+import { getAllQDIIFundData, type QDIIFundData, type QDIICategory } from "~/lib/market-data";
 import { DURATION, EASING } from "~/lib/motion";
 import { ShareExport } from "~/components/share-export";
 
 export function meta() {
   return [
-    { title: "ETFVoid - 场外标普500（被动型）" },
+    { title: "ETFVoid - QDII 基金" },
     {
       name: "description",
-      content: "场外标普500指数基金对比：规模、收益率、申购状态一览",
+      content: "全部QDII基金一览：纳斯达克100、标普500、主动型美股，支持对比与分析",
     },
   ];
 }
 
 export async function loader() {
-  const funds = await getSP500OTCData();
+  const funds = await getAllQDIIFundData();
   return { funds, fetchedAt: new Date().toISOString() };
 }
 
-type SortField = "code" | "name" | "scale" | "returnOneYear" | "changeDaily" | "purchaseStatus";
+type SortField =
+  | "code"
+  | "name"
+  | "categoryLabel"
+  | "scale"
+  | "returnOneYear"
+  | "changeDaily"
+  | "purchaseStatus";
 type SortDir = "asc" | "desc";
+type FilterCategory = "all" | QDIICategory;
 type FilterStatus = "all" | "open" | "suspended";
 
-export default function SP500() {
+export default function QDII() {
   const { funds, fetchedAt } = useLoaderData<typeof loader>();
   const [sortField, setSortField] = useState<SortField>("returnOneYear");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [filterCategory, setFilterCategory] = useState<FilterCategory>("all");
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
+  const [compareList, setCompareList] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const exportRef = useRef<HTMLDivElement>(null);
 
   const toggleSort = (field: SortField) => {
@@ -54,13 +67,36 @@ export default function SP500() {
     }
   };
 
+  const toggleCompare = (code: string) => {
+    setCompareList((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code],
+    );
+  };
+
   const filtered = useMemo(() => {
     let list = [...funds];
+
+    // 搜索过滤
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter(
+        (f) =>
+          f.code.includes(q) || f.name.toLowerCase().includes(q) || f.categoryLabel.includes(q),
+      );
+    }
+
+    // 分类筛选
+    if (filterCategory !== "all") {
+      list = list.filter((f) => f.category === filterCategory);
+    }
+
+    // 申购状态筛选
     if (filterStatus === "open") {
       list = list.filter((f) => f.purchaseStatus !== "暂停");
     } else if (filterStatus === "suspended") {
       list = list.filter((f) => f.purchaseStatus === "暂停");
     }
+
     list.sort((a, b) => {
       let va: number | string = 0;
       let vb: number | string = 0;
@@ -72,6 +108,10 @@ export default function SP500() {
         case "name":
           va = a.name;
           vb = b.name;
+          break;
+        case "categoryLabel":
+          va = a.categoryLabel;
+          vb = b.categoryLabel;
           break;
         case "scale":
           va = a.scale;
@@ -96,8 +136,11 @@ export default function SP500() {
       return sortDir === "asc" ? (va as number) - (vb as number) : (vb as number) - (va as number);
     });
     return list;
-  }, [funds, filterStatus, sortField, sortDir]);
+  }, [funds, filterCategory, filterStatus, sortField, sortDir, searchQuery]);
 
+  const nasdaqCount = funds.filter((f) => f.category === "nasdaq100").length;
+  const sp500Count = funds.filter((f) => f.category === "sp500").length;
+  const activeCount = funds.filter((f) => f.category === "active").length;
   const openCount = funds.filter((f) => f.purchaseStatus !== "暂停").length;
   const suspendedCount = funds.filter((f) => f.purchaseStatus === "暂停").length;
 
@@ -108,26 +151,64 @@ export default function SP500() {
         {/* 标题区 */}
         <FadeIn className="mb-6 flex items-end justify-between" delay={0.1}>
           <div>
-            <h1 className="mb-2 text-xl font-bold tracking-tight md:text-2xl">
-              场外标普500基金对比
-            </h1>
+            <h1 className="mb-2 text-xl font-bold tracking-tight md:text-2xl">QDII 基金一览</h1>
             <p className="text-sm text-muted-foreground">
               {funds.length}只 · 行情更新：{fetchedAt.slice(11, 16)}
             </p>
             <p className="text-xs text-muted-foreground">数据来源：天天基金网 / 东方财富</p>
           </div>
-          <ShareExport targetRef={exportRef} fileName="sp500-funds" />
+          <ShareExport targetRef={exportRef} fileName="qdii-funds" />
         </FadeIn>
 
         {/* 可导出区域 */}
         <div ref={exportRef} className="bg-background p-2">
-          {/* 筛选器 */}
-          <FadeIn className="mb-4 flex items-center gap-2" delay={0.15}>
+          {/* 搜索栏 */}
+          <FadeIn className="mb-4" delay={0.12}>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="搜索基金代码或名称..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-9 w-full rounded-md border bg-background pl-9 pr-3 text-sm outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+          </FadeIn>
+
+          {/* 分类筛选 */}
+          <FadeIn className="mb-3 flex items-center gap-2" delay={0.15}>
             <Filter className="size-4 text-muted-foreground" />
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { key: "all" as const, label: `全部 (${funds.length})` },
+                { key: "nasdaq100" as const, label: `纳指100 (${nasdaqCount})` },
+                { key: "sp500" as const, label: `标普500 (${sp500Count})` },
+                { key: "active" as const, label: `主动型 (${activeCount})` },
+              ].map((opt) => (
+                <motion.button
+                  key={opt.key}
+                  onClick={() => setFilterCategory(opt.key)}
+                  whileTap={{ scale: 0.95 }}
+                  transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                    filterCategory === opt.key
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  }`}
+                >
+                  {opt.label}
+                </motion.button>
+              ))}
+            </div>
+          </FadeIn>
+
+          {/* 申购状态筛选 */}
+          <FadeIn className="mb-4 flex items-center gap-2" delay={0.17}>
             <div className="flex gap-1.5">
               {[
-                { key: "all" as const, label: "全部" },
-                { key: "open" as const, label: `仅开放申购 (${openCount})` },
+                { key: "all" as const, label: "全部状态" },
+                { key: "open" as const, label: `开放申购 (${openCount})` },
                 { key: "suspended" as const, label: `暂停申购 (${suspendedCount})` },
               ].map((opt) => (
                 <motion.button
@@ -147,6 +228,66 @@ export default function SP500() {
             </div>
           </FadeIn>
 
+          {/* 对比浮动栏 */}
+          <AnimatePresence>
+            {compareList.length > 0 && (
+              <motion.div
+                key="compare-bar"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+                className="mb-4"
+              >
+                <Card className="border-primary/30 bg-primary/5">
+                  <CardContent className="flex items-center justify-between px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <GitCompare className="size-4 text-primary" />
+                      <span className="text-sm font-medium">已选 {compareList.length} 只基金</span>
+                      <div className="flex gap-1">
+                        {compareList.map((code) => {
+                          const fund = funds.find((f) => f.code === code);
+                          return (
+                            <Badge key={code} variant="secondary" className="text-xs">
+                              {fund?.name?.slice(0, 6) ?? code}
+                              <button
+                                onClick={() => toggleCompare(code)}
+                                className="ml-1 hover:text-destructive"
+                              >
+                                ×
+                              </button>
+                            </Badge>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setCompareList([])}>
+                        清空
+                      </Button>
+                      {compareList.length >= 2 && (
+                        <Button size="sm" asChild>
+                          <Link to={`/cn/funds?funds=${compareList.join(",")}`}>
+                            <GitCompare className="mr-1 size-3" />
+                            对比
+                          </Link>
+                        </Button>
+                      )}
+                      {compareList.length === 1 && (
+                        <Button size="sm" asChild>
+                          <Link to={`/cn/fund?code=${compareList[0]}`}>
+                            <BarChart3 className="mr-1 size-3" />
+                            分析
+                          </Link>
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* 基金表格 */}
           <FadeIn delay={0.2}>
             <Card>
@@ -155,6 +296,7 @@ export default function SP500() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b bg-muted/30">
+                        <ThCell>对比</ThCell>
                         <ThSortableCell
                           label="代码"
                           field="code"
@@ -165,6 +307,13 @@ export default function SP500() {
                         <ThSortableCell
                           label="基金名称"
                           field="name"
+                          current={sortField}
+                          dir={sortDir}
+                          onSort={toggleSort}
+                        />
+                        <ThSortableCell
+                          label="类型"
+                          field="categoryLabel"
                           current={sortField}
                           dir={sortDir}
                           onSort={toggleSort}
@@ -202,7 +351,12 @@ export default function SP500() {
                     </thead>
                     <tbody>
                       {filtered.map((fund) => (
-                        <FundRow key={fund.code} fund={fund} />
+                        <FundRow
+                          key={`${fund.category}-${fund.code}`}
+                          fund={fund}
+                          isSelected={compareList.includes(fund.code)}
+                          onToggleCompare={() => toggleCompare(fund.code)}
+                        />
                       ))}
                     </tbody>
                   </table>
@@ -259,7 +413,7 @@ function Header() {
           ETFVoid
         </Link>
         <span className="text-muted-foreground">/</span>
-        <span className="font-medium">标普500</span>
+        <span className="font-medium">QDII 基金</span>
       </div>
     </motion.header>
   );
@@ -308,18 +462,49 @@ function ThSortableCell({
   );
 }
 
-function FundRow({ fund }: { fund: OTCFundData }) {
+/** 分类标签颜色映射 */
+const CATEGORY_COLORS: Record<QDIICategory, string> = {
+  nasdaq100: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  sp500: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+  active: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+};
+
+function FundRow({
+  fund,
+  isSelected,
+  onToggleCompare,
+}: {
+  fund: QDIIFundData;
+  isSelected: boolean;
+  onToggleCompare: () => void;
+}) {
   const isSuspended = fund.purchaseStatus === "暂停";
 
   return (
     <tr
       className={`border-b last:border-0 transition-colors hover:bg-muted/30 ${isSuspended ? "opacity-60" : ""}`}
     >
+      <td className="py-2.5 px-3">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={onToggleCompare}
+          className="size-3.5 rounded border-muted-foreground/30 accent-primary"
+          aria-label={`选择 ${fund.name} 进行对比`}
+        />
+      </td>
       <td className="py-2.5 px-3 font-mono text-xs">{fund.code}</td>
       <td className="py-2.5 px-3">
         <Link to={`/fund/${fund.code}`} className="hover:text-primary hover:underline text-sm">
           {fund.name}
         </Link>
+      </td>
+      <td className="py-2.5 px-3">
+        <span
+          className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[fund.category]}`}
+        >
+          {fund.categoryLabel}
+        </span>
       </td>
       <td className="py-2.5 px-3 text-right">{fund.scale > 0 ? fund.scale.toFixed(1) : "—"}</td>
       <td className="py-2.5 px-3 text-right">

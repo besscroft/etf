@@ -1,6 +1,6 @@
 import type { Route } from "./+types/compare";
 import { useLoaderData, useSearchParams, Link } from "react-router";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { getETFPremiumData, getFundCompareData, type FundDetailData } from "~/lib/market-data";
 import { DURATION, EASING } from "~/lib/motion";
+import { ShareExport } from "~/components/share-export";
 
 export function meta() {
   return [
@@ -58,6 +59,7 @@ export default function Compare() {
   const { etfList, fundDetails: initialDetails } = useLoaderData<typeof loader>();
   const [, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
+  const exportRef = useRef<HTMLDivElement>(null);
 
   // 已选基金代码列表
   const selectedCodes = useMemo(() => initialDetails.map((f) => f.code), [initialDetails]);
@@ -203,14 +205,24 @@ export default function Compare() {
           )}
         </section>
 
-        {/* 对比内容 */}
-        {initialDetails.length >= 2 ? (
-          <CompareContent funds={initialDetails} onRemove={removeFund} />
-        ) : initialDetails.length === 1 ? (
-          <p className="text-center text-sm text-muted-foreground">请再选择至少 1 只基金开始对比</p>
-        ) : (
-          <EmptyState />
-        )}
+        {/* 对比内容（可导出区域） */}
+        <div className="flex items-center justify-end mb-3">
+          {initialDetails.length >= 2 && (
+            <ShareExport targetRef={exportRef} fileName="fund-compare" />
+          )}
+        </div>
+        <div ref={exportRef} className="bg-background p-2">
+          {initialDetails.length >= 2 ? (
+            <CompareContent funds={initialDetails} onRemove={removeFund} />
+          ) : initialDetails.length === 1 ? (
+            <p className="text-center text-sm text-muted-foreground">
+              请再选择至少 1 只基金开始对比
+            </p>
+          ) : (
+            <EmptyState />
+          )}
+        </div>
+        {/* 可导出区域结束 */}
       </main>
     </div>
   );
@@ -347,7 +359,7 @@ function MetricRow({
         if (isChange) {
           const num = typeof val === "number" ? val : parseFloat(String(val));
           if (!isNaN(num)) {
-            className += num > 0 ? " text-emerald-500" : num < 0 ? " text-red-500" : "";
+            className += num > 0 ? " text-red-500" : num < 0 ? " text-emerald-500" : "";
           }
         }
         if (highlight) {
@@ -643,7 +655,7 @@ function OverlayChart({
                   style={{ backgroundColor: COMPARE_COLORS[sIdx % COMPARE_COLORS.length].line }}
                 />
                 <span>{series.fund.name}</span>
-                <span className={change >= 0 ? "text-emerald-500" : "text-red-500"}>
+                <span className={change >= 0 ? "text-red-500" : "text-emerald-500"}>
                   {change >= 0 ? "+" : ""}
                   {change.toFixed(2)}%
                 </span>
@@ -700,7 +712,7 @@ function PerformanceComparison({ funds }: { funds: Array<FundDetailData & { erro
                           {val !== null ? (
                             <div
                               className={`absolute top-0.5 h-4 rounded-sm ${
-                                val >= 0 ? "bg-emerald-500/80" : "bg-red-500/80"
+                                val >= 0 ? "bg-red-500/80" : "bg-emerald-500/80"
                               }`}
                               style={{
                                 width: `${Math.abs(pct)}%`,
@@ -714,9 +726,9 @@ function PerformanceComparison({ funds }: { funds: Array<FundDetailData & { erro
                             val === null
                               ? "text-muted-foreground"
                               : val > 0
-                                ? "text-emerald-500"
+                                ? "text-red-500"
                                 : val < 0
-                                  ? "text-red-500"
+                                  ? "text-emerald-500"
                                   : ""
                           }`}
                         >

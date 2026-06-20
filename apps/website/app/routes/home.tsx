@@ -15,23 +15,18 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   BarChart3,
   Search,
-  Shield,
   ArrowRight,
   Activity,
   Gauge,
   LineChart,
   Menu,
   X,
-  RefreshCw,
-  ArrowUpDown,
-  ChevronUp,
-  ChevronDown,
-  GitCompare,
   TrendingUp,
+  Filter,
 } from "lucide-react";
 import { getMarketData, type MarketData } from "~/lib/market-data";
 import { useState, useMemo, useEffect, useRef } from "react";
-import { useMotionConfig, fadeInDown, DURATION, EASING, DISTANCE } from "~/lib/motion";
+import { useMotionConfig, DURATION, EASING, DISTANCE } from "~/lib/motion";
 
 export function meta(_args: Route.MetaArgs) {
   return [
@@ -52,14 +47,6 @@ export async function loader() {
 export default function Home() {
   const data = useLoaderData<typeof loader>();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  // 对比列表：存储已选基金的 code
-  const [compareList, setCompareList] = useState<string[]>([]);
-
-  const toggleCompare = (code: string) => {
-    setCompareList((prev) =>
-      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code],
-    );
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -72,21 +59,9 @@ export default function Home() {
         <MarketIndicators data={data} />
         <MarketTemperature data={data} />
         <ToolboxSection />
-        <PremiumAlertSection
-          data={data}
-          compareList={compareList}
-          onToggleCompare={toggleCompare}
-        />
+        <QDIIFundSection data={data} />
       </main>
       <Footer fetchedAt={data.fetchedAt} />
-      {/* 浮动对比卡片：AnimatePresence 实现入场/退场动画 */}
-      <AnimatePresence>
-        <CompareFloatBar
-          compareList={compareList}
-          etfList={data.etfPremium}
-          onRemove={toggleCompare}
-        />
-      </AnimatePresence>
     </div>
   );
 }
@@ -165,7 +140,7 @@ function Header({
           ))}
         </StaggerContainer>
 
-        {/* 移动端菜单按钮：图标切换动画 */}
+        {/* 移动端菜单按钮：缩放切换动画 */}
         <MotionButton
           variant="ghost"
           size="icon"
@@ -177,9 +152,9 @@ function Header({
             {mobileMenuOpen ? (
               <motion.span
                 key="close"
-                initial={{ rotate: -90, opacity: 0 }}
-                animate={{ rotate: 0, opacity: 1 }}
-                exit={{ rotate: 90, opacity: 0 }}
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0, opacity: 0 }}
                 transition={{ duration: DURATION.fast, ease: EASING.easeInOut }}
               >
                 <X className="size-5" />
@@ -187,9 +162,9 @@ function Header({
             ) : (
               <motion.span
                 key="open"
-                initial={{ rotate: 90, opacity: 0 }}
-                animate={{ rotate: 0, opacity: 1 }}
-                exit={{ rotate: -90, opacity: 0 }}
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0, opacity: 0 }}
                 transition={{ duration: DURATION.fast, ease: EASING.easeInOut }}
               >
                 <Menu className="size-5" />
@@ -240,7 +215,7 @@ function HeroSection({ data }: { data: MarketData }) {
     <section className="py-8 md:py-16">
       {/* 首屏指标：stagger 依次入场，数字滚动 */}
       <StaggerContainer
-        className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-4 md:gap-4"
+        className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-5 md:gap-4"
         stagger={0.1}
       >
         <StaggerItem>
@@ -249,6 +224,15 @@ function HeroSection({ data }: { data: MarketData }) {
             numericValue={data.nasdaq.price ?? 0}
             sub={formatChange(data.nasdaq.changePercent)}
             trend={getTrend(data.nasdaq.changePercent)}
+            highlight
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <MetricCard
+            label="纳指100"
+            numericValue={data.nasdaq100.price ?? 0}
+            sub={formatChange(data.nasdaq100.changePercent)}
+            trend={getTrend(data.nasdaq100.changePercent)}
             highlight
           />
         </StaggerItem>
@@ -306,9 +290,9 @@ function MetricCard({
   const valueColor = warning
     ? "text-amber-500"
     : trend === "up"
-      ? "text-emerald-500"
+      ? "text-red-500"
       : trend === "down"
-        ? "text-red-500"
+        ? "text-emerald-500"
         : "text-foreground";
 
   // 数值为 0 视为无数据，显示 "—"
@@ -600,12 +584,8 @@ function ToolboxSection() {
   return (
     <section className="mb-8 md:mb-10">
       <SectionTitle title="投资工具箱" />
-      <StaggerContainer
-        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 md:gap-4"
-        stagger={0.1}
-        inView
-      >
-        <StaggerItem>
+      <StaggerContainer className="grid gap-3 sm:grid-cols-2 md:gap-4" stagger={0.1} inView>
+        <StaggerItem className="[&>div]:h-full">
           <ToolCard
             icon={<Search className="size-5" />}
             title="基金对比"
@@ -613,21 +593,12 @@ function ToolboxSection() {
             href="/cn/funds"
           />
         </StaggerItem>
-        <StaggerItem>
+        <StaggerItem className="[&>div]:h-full">
           <ToolCard
             icon={<BarChart3 className="size-5" />}
             title="基金分析"
             description="单基金深度分析：净值走势、全周期收益、最大回撤、月度热力图与经理履历"
             href="/cn/fund"
-          />
-        </StaggerItem>
-        <StaggerItem>
-          <ToolCard
-            icon={<Shield className="size-5" />}
-            title="稳健收益"
-            description="全球国债、投资级公司债与REITs，信用评级、最大回撤与入场指南"
-            href="/global/stable"
-            extra="美国国债 4.8% vs 国内存款 1.45%"
           />
         </StaggerItem>
       </StaggerContainer>
@@ -652,7 +623,7 @@ function ToolCard({
 }) {
   return (
     <MotionCard hover className="flex h-full flex-col">
-      <CardHeader>
+      <CardHeader className="flex-shrink-0">
         <CardTitle className="flex items-center gap-2 text-sm md:text-base">
           <motion.span
             className="text-primary"
@@ -667,7 +638,7 @@ function ToolCard({
           {description}
         </CardDescription>
       </CardHeader>
-      <CardContent className="mt-auto">
+      <CardContent className="mt-auto flex flex-col flex-1">
         {extra && <p className="mb-3 text-xs text-muted-foreground">{extra}</p>}
         {quickLinks && (
           <div className="mb-3 flex flex-wrap gap-1.5">
@@ -683,78 +654,112 @@ function ToolCard({
           </div>
         )}
         {href && (
-          <Button variant="outline" size="sm" className="w-full" asChild>
-            <a href={href}>
-              进入
-              <ArrowRight className="ml-1 size-3" />
-            </a>
-          </Button>
+          <div className="mt-auto">
+            <Button variant="outline" size="sm" className="w-full" asChild>
+              <a href={href}>
+                进入
+                <ArrowRight className="ml-1 size-3" />
+              </a>
+            </Button>
+          </div>
         )}
       </CardContent>
     </MotionCard>
   );
 }
 
-/* ==================== ETF 溢价预警 ==================== */
+/* ==================== QDII 基金列表 ==================== */
 
-/** 排序字段类型 */
-type SortField = "premium" | "changePercent" | "name" | "code" | "scale";
-type SortDir = "asc" | "desc";
+type QDIISortField =
+  | "code"
+  | "name"
+  | "categoryLabel"
+  | "scale"
+  | "returnOneYear"
+  | "changeDaily"
+  | "purchaseStatus"
+  | "purchaseLimit";
+type QDIISortDir = "asc" | "desc";
+type QDIIFilterCategory = "all" | "nasdaq100" | "sp500" | "active";
+type QDIIFilterStatus = "all" | "open" | "suspended";
 
-function PremiumAlertSection({
-  data,
-  compareList,
-  onToggleCompare,
-}: {
-  data: MarketData;
-  compareList: string[];
-  onToggleCompare: (code: string) => void;
-}) {
-  const etfList = data.etfPremium;
-  const [sortField, setSortField] = useState<SortField>("premium");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+function QDIIFundSection({ data }: { data: MarketData }) {
+  const funds = data.qdiiFunds;
+  const [sortField, setSortField] = useState<QDIISortField>("returnOneYear");
+  const [sortDir, setSortDir] = useState<QDIISortDir>("desc");
+  const [filterCategory, setFilterCategory] = useState<QDIIFilterCategory>("all");
+  const [filterStatus, setFilterStatus] = useState<QDIIFilterStatus>("all");
+  const [compareList, setCompareList] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
-  // 搜索过滤
-  const filtered = useMemo(() => {
-    if (!searchQuery.trim()) return etfList;
-    const q = searchQuery.trim().toLowerCase();
-    return etfList.filter(
-      (e) => e.code.toLowerCase().includes(q) || e.name.toLowerCase().includes(q),
-    );
-  }, [etfList, searchQuery]);
+  const toggleSort = (field: QDIISortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir(field === "returnOneYear" || field === "scale" ? "desc" : "asc");
+    }
+  };
 
-  // 排序
-  const sorted = useMemo(() => {
-    const list = [...filtered];
+  const toggleCompare = (code: string) => {
+    setCompareList((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code],
+    );
+  };
+
+  const filtered = useMemo(() => {
+    let list = [...funds];
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter(
+        (f) =>
+          f.code.includes(q) || f.name.toLowerCase().includes(q) || f.categoryLabel.includes(q),
+      );
+    }
+    if (filterCategory !== "all") {
+      list = list.filter((f) => f.category === filterCategory);
+    }
+    if (filterStatus === "open") {
+      list = list.filter((f) => f.purchaseStatus !== "暂停");
+    } else if (filterStatus === "suspended") {
+      list = list.filter((f) => f.purchaseStatus === "暂停");
+    }
     list.sort((a, b) => {
-      let va: number | string;
-      let vb: number | string;
+      let va: number | string = 0;
+      let vb: number | string = 0;
       switch (sortField) {
-        case "premium":
-          va = a.premium;
-          vb = b.premium;
-          break;
-        case "changePercent":
-          va = a.changePercent;
-          vb = b.changePercent;
+        case "code":
+          va = a.code;
+          vb = b.code;
           break;
         case "name":
           va = a.name;
           vb = b.name;
           break;
-        case "code":
-          va = a.code;
-          vb = b.code;
+        case "categoryLabel":
+          va = a.categoryLabel;
+          vb = b.categoryLabel;
           break;
         case "scale":
-          // 从规模字符串提取数字（如"12.3亿"→12.3）
-          va = parseFloat(a.scale) || 0;
-          vb = parseFloat(b.scale) || 0;
+          va = a.scale;
+          vb = b.scale;
           break;
-        default:
-          va = a.premium;
-          vb = b.premium;
+        case "returnOneYear":
+          va = a.returnOneYear ?? -999;
+          vb = b.returnOneYear ?? -999;
+          break;
+        case "changeDaily":
+          va = a.changeDaily ?? -999;
+          vb = b.changeDaily ?? -999;
+          break;
+        case "purchaseStatus":
+          va = a.purchaseStatus;
+          vb = b.purchaseStatus;
+          break;
+        case "purchaseLimit":
+          va = a.purchaseLimit;
+          vb = b.purchaseLimit;
+          break;
       }
       if (typeof va === "string" && typeof vb === "string") {
         return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
@@ -762,37 +767,37 @@ function PremiumAlertSection({
       return sortDir === "asc" ? (va as number) - (vb as number) : (vb as number) - (va as number);
     });
     return list;
-  }, [filtered, sortField, sortDir]);
+  }, [funds, filterCategory, filterStatus, sortField, sortDir, searchQuery]);
 
-  const toggleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(field);
-      // 溢价率和涨跌幅默认降序，名称和代码默认升序
-      setSortDir(field === "name" || field === "code" ? "asc" : "desc");
-    }
-  };
+  const nasdaqCount = funds.filter((f) => f.category === "nasdaq100").length;
+  const sp500Count = funds.filter((f) => f.category === "sp500").length;
+  const activeCount = funds.filter((f) => f.category === "active").length;
+  const openCount = funds.filter((f) => f.purchaseStatus !== "暂停").length;
+  const suspendedCount = funds.filter((f) => f.purchaseStatus === "暂停").length;
 
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) {
-      return <ArrowUpDown className="ml-1 inline size-3 opacity-30" />;
-    }
-    return sortDir === "asc" ? (
-      <ChevronUp className="ml-1 inline size-3" />
-    ) : (
-      <ChevronDown className="ml-1 inline size-3" />
-    );
+  // 分类标签颜色
+  const CATEGORY_COLORS: Record<string, string> = {
+    nasdaq100: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+    sp500: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+    active: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
   };
 
   return (
     <section className="mb-8 md:mb-10">
-      <SectionTitle title="ETF 溢价预警" />
+      <div className="mb-3 flex items-center justify-between md:mb-4">
+        <SectionTitle title="QDII 基金" />
+        <Link
+          to="/qdii"
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-primary"
+        >
+          查看全部 <ArrowRight className="size-3" />
+        </Link>
+      </div>
 
       {/* 搜索栏 */}
-      <FadeIn className="mb-3 flex items-center gap-2 md:mb-4" delay={0.1}>
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      <FadeIn className="mb-3" delay={0.1}>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
             placeholder="搜索基金代码或名称..."
@@ -801,328 +806,310 @@ function PremiumAlertSection({
             className="h-9 w-full rounded-md border bg-background pl-9 pr-3 text-sm outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
-        <AnimatePresence>
-          {searchQuery && (
-            <motion.span
-              initial={{ opacity: 0, width: 0 }}
-              animate={{ opacity: 1, width: "auto" }}
-              exit={{ opacity: 0, width: 0 }}
-              transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
-              className="text-xs text-muted-foreground whitespace-nowrap"
-            >
-              {filtered.length}/{etfList.length} 只
-            </motion.span>
-          )}
-        </AnimatePresence>
       </FadeIn>
 
-      <p className="mb-3 text-xs text-muted-foreground md:mb-4">
-        溢价 &gt;1% 注意 · &gt;2% 偏高 · &gt;3% 极高建议等待收窄
-        {searchQuery && filtered.length === 0 && " · 未找到匹配基金"}
-      </p>
+      {/* 分类筛选 */}
+      <FadeIn className="mb-2 flex items-center gap-2" delay={0.12}>
+        <Filter className="size-4 text-muted-foreground" />
+        <div className="flex flex-wrap gap-1.5">
+          {[
+            { key: "all" as const, label: `全部 (${funds.length})` },
+            { key: "nasdaq100" as const, label: `纳指100 (${nasdaqCount})` },
+            { key: "sp500" as const, label: `标普500 (${sp500Count})` },
+            { key: "active" as const, label: `主动型 (${activeCount})` },
+          ].map((opt) => (
+            <motion.button
+              key={opt.key}
+              onClick={() => setFilterCategory(opt.key)}
+              whileTap={{ scale: 0.95 }}
+              transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                filterCategory === opt.key
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+            >
+              {opt.label}
+            </motion.button>
+          ))}
+        </div>
+      </FadeIn>
 
-      <AnimatePresence mode="wait">
-        {etfList.length === 0 ? (
+      {/* 申购状态筛选 */}
+      <FadeIn className="mb-4 flex items-center gap-2" delay={0.14}>
+        <div className="flex gap-1.5">
+          {[
+            { key: "all" as const, label: "全部状态" },
+            { key: "open" as const, label: `开放申购 (${openCount})` },
+            { key: "suspended" as const, label: `暂停申购 (${suspendedCount})` },
+          ].map((opt) => (
+            <motion.button
+              key={opt.key}
+              onClick={() => setFilterStatus(opt.key)}
+              whileTap={{ scale: 0.95 }}
+              transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                filterStatus === opt.key
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
+            >
+              {opt.label}
+            </motion.button>
+          ))}
+        </div>
+      </FadeIn>
+
+      {/* 对比浮动栏 */}
+      <AnimatePresence>
+        {compareList.length > 0 && (
           <motion.div
-            key="empty-data"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            key="compare-bar"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
             transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+            className="mb-4"
           >
-            <Card>
-              <CardContent className="py-8 text-center">
-                <RefreshCw className="mx-auto mb-2 size-6 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">暂时无法获取ETF溢价数据，请稍后刷新</p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ) : filtered.length === 0 ? (
-          <motion.div
-            key="empty-search"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
-          >
-            <Card>
-              <CardContent className="py-8 text-center">
-                <Search className="mx-auto mb-2 size-6 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">未找到匹配 "{searchQuery}" 的基金</p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ) : (
-          <motion.div
-            key="table"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
-          >
-            <Card>
-              <CardContent className="p-0">
-                {/* 桌面端表格 */}
-                <div className="hidden overflow-x-auto md:block">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-xs text-muted-foreground">
-                        <th
-                          className="cursor-pointer px-4 py-3 text-left font-medium select-none hover:text-foreground"
-                          onClick={() => toggleSort("code")}
-                        >
-                          代码 <SortIcon field="code" />
-                        </th>
-                        <th
-                          className="cursor-pointer px-4 py-3 text-left font-medium select-none hover:text-foreground"
-                          onClick={() => toggleSort("name")}
-                        >
-                          名称 <SortIcon field="name" />
-                        </th>
-                        <th className="px-4 py-3 text-left font-medium">跟踪指数</th>
-                        <th
-                          className="cursor-pointer px-4 py-3 text-right font-medium select-none hover:text-foreground"
-                          onClick={() => toggleSort("premium")}
-                        >
-                          溢价率 <SortIcon field="premium" />
-                        </th>
-                        <th
-                          className="cursor-pointer px-4 py-3 text-right font-medium select-none hover:text-foreground"
-                          onClick={() => toggleSort("changePercent")}
-                        >
-                          涨跌幅 <SortIcon field="changePercent" />
-                        </th>
-                        <th
-                          className="cursor-pointer px-4 py-3 text-right font-medium select-none hover:text-foreground"
-                          onClick={() => toggleSort("scale")}
-                        >
-                          规模 <SortIcon field="scale" />
-                        </th>
-                        <th className="px-4 py-3 text-center font-medium">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sorted.map((row) => (
-                        <tr
-                          key={row.code}
-                          className="border-b last:border-b-0 transition-colors hover:bg-muted/50"
-                        >
-                          <td className="px-4 py-3 font-mono text-xs">
-                            <Link to={`/fund/${row.code}`} className="text-primary hover:underline">
-                              {row.code}
-                            </Link>
-                          </td>
-                          <td className="px-4 py-3 text-xs">
-                            <Link
-                              to={`/fund/${row.code}`}
-                              className="hover:text-primary hover:underline"
-                            >
-                              {row.name}
-                            </Link>
-                          </td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground">{row.index}</td>
-                          <td className="px-4 py-3 text-right">
-                            <PremiumBadge value={row.premium} />
-                          </td>
-                          <td
-                            className={`px-4 py-3 text-right text-xs ${
-                              row.changePercent > 0
-                                ? "text-emerald-500"
-                                : row.changePercent < 0
-                                  ? "text-red-500"
-                                  : ""
-                            }`}
+            <Card className="border-primary/30 bg-primary/5">
+              <CardContent className="flex items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">已选 {compareList.length} 只基金</span>
+                  <div className="flex gap-1">
+                    {compareList.map((code) => {
+                      const fund = funds.find((f) => f.code === code);
+                      return (
+                        <Badge key={code} variant="secondary" className="text-xs">
+                          {fund?.name?.slice(0, 6) ?? code}
+                          <button
+                            onClick={() => toggleCompare(code)}
+                            className="ml-1 hover:text-destructive"
                           >
-                            {formatChange(row.changePercent)}
-                          </td>
-                          <td className="px-4 py-3 text-right text-xs text-muted-foreground">
-                            {row.scale}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              <Link
-                                to={`/cn/fund?code=${row.code}`}
-                                className="inline-flex items-center gap-0.5 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                                title="分析"
-                              >
-                                <TrendingUp className="size-3" />
-                                <span className="hidden lg:inline">分析</span>
-                              </Link>
-                              <motion.button
-                                onClick={() => onToggleCompare(row.code)}
-                                whileTap={{ scale: 0.9 }}
-                                transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
-                                className={`inline-flex items-center gap-0.5 rounded-sm px-1.5 py-0.5 text-xs transition-colors ${
-                                  compareList.includes(row.code)
-                                    ? "bg-primary/15 text-primary"
-                                    : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                                }`}
-                                title={compareList.includes(row.code) ? "移除对比" : "加入对比"}
-                              >
-                                <GitCompare className="size-3" />
-                                <span className="hidden lg:inline">
-                                  {compareList.includes(row.code) ? "已选" : "对比"}
-                                </span>
-                              </motion.button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                            ×
+                          </button>
+                        </Badge>
+                      );
+                    })}
+                  </div>
                 </div>
-
-                {/* 移动端卡片列表：layout 动画实现排序/过滤平滑过渡 */}
-                <motion.div layout className="md:hidden">
-                  <AnimatePresence initial={false}>
-                    {sorted.map((row) => (
-                      <motion.div
-                        key={row.code}
-                        layout
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{
-                          duration: DURATION.normal,
-                          ease: EASING.easeOut,
-                        }}
-                        className="block overflow-hidden border-b last:border-b-0 px-3 py-3 hover:bg-muted/50"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <span className="font-mono text-xs text-muted-foreground">
-                              {row.code}
-                            </span>
-                            <span className="ml-2 text-sm">{row.name}</span>
-                          </div>
-                          <PremiumBadge value={row.premium} />
-                        </div>
-                        <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                          <span>{row.index}</span>
-                          <span>
-                            涨跌{" "}
-                            <span
-                              className={
-                                row.changePercent > 0
-                                  ? "text-emerald-500"
-                                  : row.changePercent < 0
-                                    ? "text-red-500"
-                                    : ""
-                              }
-                            >
-                              {formatChange(row.changePercent)}
-                            </span>
-                            {" · "}
-                            规模 {row.scale}
-                          </span>
-                        </div>
-                        <div className="mt-2 flex items-center justify-end gap-2">
-                          <Link
-                            to={`/cn/fund?code=${row.code}`}
-                            className="inline-flex items-center gap-1 rounded-sm border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                          >
-                            <TrendingUp className="size-3" />
-                            分析
-                          </Link>
-                          <motion.button
-                            onClick={() => onToggleCompare(row.code)}
-                            whileTap={{ scale: 0.95 }}
-                            transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
-                            className={`inline-flex items-center gap-1 rounded-sm border px-2 py-1 text-xs transition-colors ${
-                              compareList.includes(row.code)
-                                ? "border-primary/30 bg-primary/10 text-primary"
-                                : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                            }`}
-                          >
-                            <GitCompare className="size-3" />
-                            {compareList.includes(row.code) ? "已选" : "对比"}
-                          </motion.button>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                </motion.div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setCompareList([])}>
+                    清空
+                  </Button>
+                  {compareList.length >= 2 && (
+                    <Button size="sm" asChild>
+                      <Link to={`/cn/funds?funds=${compareList.join(",")}`}>对比</Link>
+                    </Button>
+                  )}
+                  {compareList.length === 1 && (
+                    <Button size="sm" asChild>
+                      <Link to={`/cn/fund?code=${compareList[0]}`}>分析</Link>
+                    </Button>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* 基金表格 */}
+      <FadeIn delay={0.15}>
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="whitespace-nowrap px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">
+                      对比
+                    </th>
+                    <QDIIThSortable
+                      label="代码"
+                      field="code"
+                      current={sortField}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <QDIIThSortable
+                      label="基金名称"
+                      field="name"
+                      current={sortField}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <QDIIThSortable
+                      label="类型"
+                      field="categoryLabel"
+                      current={sortField}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <QDIIThSortable
+                      label="规模(亿)"
+                      field="scale"
+                      current={sortField}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <QDIIThSortable
+                      label="近1年"
+                      field="returnOneYear"
+                      current={sortField}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <QDIIThSortable
+                      label="昨日涨跌"
+                      field="changeDaily"
+                      current={sortField}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <QDIIThSortable
+                      label="申购状态"
+                      field="purchaseStatus"
+                      current={sortField}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <QDIIThSortable
+                      label="每日限额"
+                      field="purchaseLimit"
+                      current={sortField}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <th className="whitespace-nowrap px-3 py-2.5 text-center text-xs font-medium text-muted-foreground">
+                      操作
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((fund) => {
+                    const isSuspended = fund.purchaseStatus === "暂停";
+                    return (
+                      <tr
+                        key={`${fund.category}-${fund.code}`}
+                        className={`border-b last:border-0 transition-colors hover:bg-muted/30 ${isSuspended ? "opacity-60" : ""}`}
+                      >
+                        <td className="py-2.5 px-3">
+                          <input
+                            type="checkbox"
+                            checked={compareList.includes(fund.code)}
+                            onChange={() => toggleCompare(fund.code)}
+                            className="size-3.5 rounded border-muted-foreground/30 accent-primary"
+                            aria-label={`选择 ${fund.name} 进行对比`}
+                          />
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-xs">{fund.code}</td>
+                        <td className="py-2.5 px-3">
+                          <Link
+                            to={`/fund/${fund.code}`}
+                            className="hover:text-primary hover:underline text-sm"
+                          >
+                            {fund.name}
+                          </Link>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span
+                            className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[fund.category] ?? ""}`}
+                          >
+                            {fund.categoryLabel}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          {fund.scale > 0 ? fund.scale.toFixed(1) : "—"}
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          {fund.returnOneYear !== null ? (
+                            <span
+                              className={`font-medium ${fund.returnOneYear > 0 ? "text-red-500" : fund.returnOneYear < 0 ? "text-emerald-500" : ""}`}
+                            >
+                              {fund.returnOneYear > 0 ? "+" : ""}
+                              {fund.returnOneYear.toFixed(2)}%
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          {fund.changeDaily !== null ? (
+                            <span
+                              className={`flex items-center justify-end gap-0.5 ${fund.changeDaily > 0 ? "text-red-500" : fund.changeDaily < 0 ? "text-emerald-500" : ""}`}
+                            >
+                              {fund.changeDaily > 0 ? "+" : ""}
+                              {fund.changeDaily.toFixed(2)}%
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <Badge
+                            variant={isSuspended ? "destructive" : "secondary"}
+                            className="text-xs"
+                          >
+                            {fund.purchaseStatus}
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-xs text-muted-foreground">
+                          {fund.purchaseLimit}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <Link
+                              to={`/cn/fund?code=${fund.code}`}
+                              className="inline-flex items-center gap-0.5 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                              title="分析"
+                            >
+                              <TrendingUp className="size-3" />
+                              <span className="hidden lg:inline">分析</span>
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </FadeIn>
+
+      <p className="mt-4 text-center text-xs text-muted-foreground">
+        数据仅供参考，不构成投资建议。申购状态实时变化，请以基金公司公告为准。
+      </p>
     </section>
   );
 }
 
-function PremiumBadge({ value }: { value: number }) {
-  if (value >= 3) {
-    return (
-      <Badge variant="destructive" className="text-xs">
-        +{value}% 极高
-      </Badge>
-    );
-  }
-  if (value >= 2) {
-    return (
-      <Badge className="bg-amber-500/10 text-amber-600 text-xs dark:bg-amber-500/20 dark:text-amber-400">
-        +{value}% 偏高
-      </Badge>
-    );
-  }
-  return (
-    <Badge variant="secondary" className="text-xs">
-      +{value}%
-    </Badge>
-  );
-}
-
-/* ==================== 浮动对比卡片 ==================== */
-
-function CompareFloatBar({
-  compareList,
-  etfList,
-  onRemove,
+/** QDII 表格可排序表头 */
+function QDIIThSortable({
+  label,
+  field,
+  current,
+  dir,
+  onSort,
 }: {
-  compareList: string[];
-  etfList: Array<{ code: string; name: string }>;
-  onRemove: (code: string) => void;
+  label: string;
+  field: QDIISortField;
+  current: QDIISortField;
+  dir: QDIISortDir;
+  onSort: (f: QDIISortField) => void;
 }) {
-  const { shouldReduceMotion } = useMotionConfig();
-
-  if (compareList.length === 0) return null;
-
-  const selectedFunds = compareList
-    .map((code) => etfList.find((e) => e.code === code))
-    .filter(Boolean) as Array<{ code: string; name: string }>;
-
+  const isActive = current === field;
   return (
-    <motion.div
-      className="fixed bottom-4 right-4 z-50 max-w-xs"
-      initial={shouldReduceMotion ? false : { opacity: 0, y: 20, scale: 0.9 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 20, scale: 0.9 }}
-      transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
-    >
-      <div className="rounded-lg border bg-card p-3 shadow-lg">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-medium">已选对比 ({compareList.length})</span>
-          <Link
-            to={`/cn/funds?funds=${compareList.join(",")}`}
-            className="inline-flex items-center gap-1 rounded-sm bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/80"
-          >
-            <GitCompare className="size-3" />
-            开始对比
-          </Link>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {selectedFunds.map((fund) => (
-            <Badge key={fund.code} variant="secondary" className="gap-1 text-xs">
-              <span className="max-w-[80px] truncate">{fund.name}</span>
-              <button onClick={() => onRemove(fund.code)} className="ml-0.5 hover:text-destructive">
-                <X className="size-3" />
-              </button>
-            </Badge>
-          ))}
-        </div>
-      </div>
-    </motion.div>
+    <th className="whitespace-nowrap px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">
+      <button
+        onClick={() => onSort(field)}
+        className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+      >
+        {label}
+        {isActive ? (dir === "asc" ? "↑" : "↓") : "↕"}
+      </button>
+    </th>
   );
 }
 
@@ -1142,7 +1129,7 @@ function Footer({ fetchedAt }: { fetchedAt: string }) {
       <div className="container mx-auto max-w-6xl px-3 text-center text-xs text-muted-foreground sm:px-4">
         <p className="mb-2">ETFVoid · 美股ETF与QDII基金追踪平台</p>
         <p className="mb-1">
-          数据更新于 {timeStr} · 数据来源: 新浪财经 / CBOE / multpl.com / 东方财富
+          数据更新于 {timeStr} · 数据来源: 新浪财经 / CBOE / multpl.com / 东方财富（天天基金）
         </p>
         <p>数据仅供参考，不构成投资建议。历史规律不能预测未来，投资有风险，入市需谨慎。</p>
       </div>

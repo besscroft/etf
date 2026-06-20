@@ -1,6 +1,6 @@
 import type { Route } from "./+types/fund.$code";
 import { useLoaderData, Link } from "react-router";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { getFundDetailData } from "~/lib/market-data";
 import { DURATION, EASING } from "~/lib/motion";
+import { ShareExport } from "~/components/share-export";
 
 export function meta({ params }: Route.MetaArgs) {
   return [
@@ -38,6 +39,7 @@ export async function loader({ params }: Route.LoaderArgs) {
 
 export default function FundDetail() {
   const fund = useLoaderData<typeof loader>();
+  const exportRef = useRef<HTMLDivElement>(null);
 
   // 场外基金没有溢价数据（index 为 "—" 标识）
   const isOTC = fund.index === "—";
@@ -76,334 +78,343 @@ export default function FundDetail() {
 
       <main className="container mx-auto max-w-4xl px-3 py-6 sm:px-4">
         {/* 基金标题 */}
-        <FadeIn className="mb-6" delay={0.1}>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold md:text-3xl">{fund.name}</h1>
-            <Badge variant="secondary" className="font-mono">
-              {fund.code}
-            </Badge>
+        <FadeIn className="mb-6 flex items-end justify-between" delay={0.1}>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold md:text-3xl">{fund.name}</h1>
+              <Badge variant="secondary" className="font-mono">
+                {fund.code}
+              </Badge>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {isOTC ? "场外基金" : `跟踪指数：${fund.index}`}
+            </p>
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {isOTC ? "场外基金" : `跟踪指数：${fund.index}`}
-          </p>
+          <ShareExport targetRef={exportRef} fileName={`fund-${fund.code}`} />
         </FadeIn>
 
-        {/* 核心指标卡片 */}
-        <StaggerContainer
-          className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4"
-          stagger={0.08}
-        >
-          <StaggerItem>
-            <Card>
-              <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
-                <span className="text-xs text-muted-foreground">
-                  {isOTC ? "最新净值" : "当前价格"}
-                </span>
-                <span className="text-2xl font-bold">{fund.price || "—"}</span>
-                <span className="flex items-center gap-1 text-xs">
-                  {fund.changePercent > 0 ? (
-                    <TrendingUp className="size-3 text-emerald-500" />
-                  ) : fund.changePercent < 0 ? (
-                    <TrendingDown className="size-3 text-red-500" />
-                  ) : (
-                    <Activity className="size-3 text-muted-foreground" />
-                  )}
-                  <span
-                    className={
-                      fund.changePercent > 0
-                        ? "text-emerald-500"
-                        : fund.changePercent < 0
+        {/* 可导出区域 */}
+        <div ref={exportRef} className="bg-background p-2">
+          {/* 核心指标卡片 */}
+          <StaggerContainer
+            className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4"
+            stagger={0.08}
+          >
+            <StaggerItem>
+              <Card>
+                <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
+                  <span className="text-xs text-muted-foreground">
+                    {isOTC ? "最新净值" : "当前价格"}
+                  </span>
+                  <span className="text-2xl font-bold">{fund.price || "—"}</span>
+                  <span className="flex items-center gap-1 text-xs">
+                    {fund.changePercent > 0 ? (
+                      <TrendingUp className="size-3 text-red-500" />
+                    ) : fund.changePercent < 0 ? (
+                      <TrendingDown className="size-3 text-emerald-500" />
+                    ) : (
+                      <Activity className="size-3 text-muted-foreground" />
+                    )}
+                    <span
+                      className={
+                        fund.changePercent > 0
                           ? "text-red-500"
-                          : "text-muted-foreground"
-                    }
-                  >
-                    {fund.changePercent > 0 ? "+" : ""}
-                    {fund.changePercent}%
+                          : fund.changePercent < 0
+                            ? "text-emerald-500"
+                            : "text-muted-foreground"
+                      }
+                    >
+                      {fund.changePercent > 0 ? "+" : ""}
+                      {fund.changePercent}%
+                    </span>
                   </span>
-                </span>
-              </CardContent>
-            </Card>
-          </StaggerItem>
-
-          <StaggerItem>
-            {isOTC ? (
-              <Card>
-                <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
-                  <span className="text-xs text-muted-foreground">近1年收益</span>
-                  <span
-                    className={`text-2xl font-bold ${(fund.performance.oneYear ?? 0) >= 0 ? "text-emerald-500" : "text-red-500"}`}
-                  >
-                    {fund.performance.oneYear !== null
-                      ? `${fund.performance.oneYear > 0 ? "+" : ""}${fund.performance.oneYear}%`
-                      : "—"}
-                  </span>
-                  <span className="text-xs text-muted-foreground">阶段涨幅</span>
                 </CardContent>
               </Card>
-            ) : (
+            </StaggerItem>
+
+            <StaggerItem>
+              {isOTC ? (
+                <Card>
+                  <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
+                    <span className="text-xs text-muted-foreground">近1年收益</span>
+                    <span
+                      className={`text-2xl font-bold ${(fund.performance.oneYear ?? 0) >= 0 ? "text-red-500" : "text-emerald-500"}`}
+                    >
+                      {fund.performance.oneYear !== null
+                        ? `${fund.performance.oneYear > 0 ? "+" : ""}${fund.performance.oneYear}%`
+                        : "—"}
+                    </span>
+                    <span className="text-xs text-muted-foreground">阶段涨幅</span>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
+                    <span className="text-xs text-muted-foreground">溢价率</span>
+                    <span className={`text-2xl font-bold ${premiumLevel.color}`}>
+                      +{fund.premium}%
+                    </span>
+                    <span className={`text-xs ${premiumLevel.color}`}>{premiumLevel.label}</span>
+                  </CardContent>
+                </Card>
+              )}
+            </StaggerItem>
+
+            <StaggerItem>
               <Card>
                 <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
-                  <span className="text-xs text-muted-foreground">溢价率</span>
-                  <span className={`text-2xl font-bold ${premiumLevel.color}`}>
-                    +{fund.premium}%
-                  </span>
-                  <span className={`text-xs ${premiumLevel.color}`}>{premiumLevel.label}</span>
+                  <span className="text-xs text-muted-foreground">基金规模</span>
+                  <span className="text-2xl font-bold">{fund.scale}</span>
+                  <span className="text-xs text-muted-foreground">管理规模</span>
                 </CardContent>
               </Card>
-            )}
-          </StaggerItem>
+            </StaggerItem>
 
-          <StaggerItem>
-            <Card>
-              <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
-                <span className="text-xs text-muted-foreground">基金规模</span>
-                <span className="text-2xl font-bold">{fund.scale}</span>
-                <span className="text-xs text-muted-foreground">管理规模</span>
+            <StaggerItem>
+              <Card>
+                <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
+                  <span className="text-xs text-muted-foreground">管理费率</span>
+                  <span className="text-2xl font-bold">{fund.fee}</span>
+                  <span className="text-xs text-muted-foreground">年费率</span>
+                </CardContent>
+              </Card>
+            </StaggerItem>
+          </StaggerContainer>
+
+          {/* 溢价分析（仅场内ETF显示） */}
+          {!isOTC && (
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+                  <AlertTriangle className="size-4 text-amber-500" />
+                  溢价分析
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* 溢价进度条 */}
+                <div className="mb-3">
+                  <div className="mb-1 flex justify-between text-xs text-muted-foreground">
+                    <span>折价</span>
+                    <span>0%</span>
+                    <span>溢价</span>
+                  </div>
+                  <div className="relative h-3 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={`absolute left-1/2 top-0 h-full rounded-full transition-all ${
+                        fund.premium >= 3
+                          ? "bg-red-500"
+                          : fund.premium >= 2
+                            ? "bg-amber-500"
+                            : "bg-emerald-500"
+                      }`}
+                      style={{ width: `${Math.min(50, (fund.premium / 10) * 50)}%` }}
+                    />
+                  </div>
+                  <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+                    <span>-5%</span>
+                    <span>+5%</span>
+                    <span>+10%+</span>
+                  </div>
+                </div>
+
+                {/* 溢价提示 */}
+                <div className={`rounded-md p-3 ${premiumLevel.bg}`}>
+                  <p className={`text-sm ${premiumLevel.color}`}>
+                    {fund.premium >= 3
+                      ? "溢价极高！建议等待溢价收窄后再买入，避免高位接盘。场内买入价格远高于基金净值，存在较大回落风险。"
+                      : fund.premium >= 2
+                        ? "溢价偏高，买入需谨慎。场内价格高于基金净值，若溢价收窄可能产生额外亏损。"
+                        : fund.premium >= 1
+                          ? "溢价适中，可关注。场内价格略高于基金净值，属于正常波动范围。"
+                          : "溢价较低，相对安全。场内价格接近基金净值。"}
+                  </p>
+                </div>
               </CardContent>
             </Card>
-          </StaggerItem>
+          )}
 
-          <StaggerItem>
-            <Card>
-              <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
-                <span className="text-xs text-muted-foreground">管理费率</span>
-                <span className="text-2xl font-bold">{fund.fee}</span>
-                <span className="text-xs text-muted-foreground">年费率</span>
-              </CardContent>
-            </Card>
-          </StaggerItem>
-        </StaggerContainer>
-
-        {/* 溢价分析（仅场内ETF显示） */}
-        {!isOTC && (
+          {/* ====== 业绩走势 ====== */}
           <Card className="mb-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-                <AlertTriangle className="size-4 text-amber-500" />
-                溢价分析
+                <LineChart className="size-4 text-blue-500" />
+                业绩走势
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {/* 溢价进度条 */}
-              <div className="mb-3">
-                <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-                  <span>折价</span>
-                  <span>0%</span>
-                  <span>溢价</span>
-                </div>
-                <div className="relative h-3 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className={`absolute left-1/2 top-0 h-full rounded-full transition-all ${
-                      fund.premium >= 3
-                        ? "bg-red-500"
-                        : fund.premium >= 2
-                          ? "bg-amber-500"
-                          : "bg-emerald-500"
-                    }`}
-                    style={{ width: `${Math.min(50, (fund.premium / 10) * 50)}%` }}
-                  />
-                </div>
-                <div className="mt-1 flex justify-between text-xs text-muted-foreground">
-                  <span>-5%</span>
-                  <span>+5%</span>
-                  <span>+10%+</span>
-                </div>
-              </div>
+              {fund.navTrend.length > 0 ? (
+                <NavTrendSection data={fund.navTrend} />
+              ) : (
+                <p className="text-center text-sm text-muted-foreground">暂无业绩走势数据</p>
+              )}
+            </CardContent>
+          </Card>
 
-              {/* 溢价提示 */}
-              <div className={`rounded-md p-3 ${premiumLevel.bg}`}>
-                <p className={`text-sm ${premiumLevel.color}`}>
-                  {fund.premium >= 3
-                    ? "溢价极高！建议等待溢价收窄后再买入，避免高位接盘。场内买入价格远高于基金净值，存在较大回落风险。"
-                    : fund.premium >= 2
-                      ? "溢价偏高，买入需谨慎。场内价格高于基金净值，若溢价收窄可能产生额外亏损。"
-                      : fund.premium >= 1
-                        ? "溢价适中，可关注。场内价格略高于基金净值，属于正常波动范围。"
-                        : "溢价较低，相对安全。场内价格接近基金净值。"}
-                </p>
+          {/* ====== 历史业绩 ====== */}
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+                <Trophy className="size-4 text-amber-500" />
+                历史业绩
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <PerformanceCard label="近1月" value={fund.performance.oneMonth} />
+                <PerformanceCard label="近3月" value={fund.performance.threeMonth} />
+                <PerformanceCard label="近6月" value={fund.performance.sixMonth} />
+                <PerformanceCard label="近1年" value={fund.performance.oneYear} />
               </div>
             </CardContent>
           </Card>
-        )}
 
-        {/* ====== 业绩走势 ====== */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-              <LineChart className="size-4 text-blue-500" />
-              业绩走势
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {fund.navTrend.length > 0 ? (
-              <NavTrendSection data={fund.navTrend} />
-            ) : (
-              <p className="text-center text-sm text-muted-foreground">暂无业绩走势数据</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* ====== 历史业绩 ====== */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-              <Trophy className="size-4 text-amber-500" />
-              历史业绩
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <PerformanceCard label="近1月" value={fund.performance.oneMonth} />
-              <PerformanceCard label="近3月" value={fund.performance.threeMonth} />
-              <PerformanceCard label="近6月" value={fund.performance.sixMonth} />
-              <PerformanceCard label="近1年" value={fund.performance.oneYear} />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* ====== 重仓股行情 ====== */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-              <Users className="size-4 text-purple-500" />
-              重仓股行情
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {fund.topHoldings.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-xs text-muted-foreground">
-                      <th className="pb-2 text-left font-medium">代码</th>
-                      <th className="pb-2 text-left font-medium">名称</th>
-                      <th className="pb-2 text-right font-medium">持仓占比</th>
-                      <th className="pb-2 text-right font-medium">最新价</th>
-                      <th className="pb-2 text-right font-medium">涨跌幅</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {fund.topHoldings.map((stock) => (
-                      <tr key={stock.symbol} className="border-b last:border-0">
-                        <td className="py-2 font-mono text-xs">{stock.symbol}</td>
-                        <td className="py-2">{stock.name}</td>
-                        <td className="py-2 text-right">
-                          {stock.holdingRatio > 0 ? (
-                            <span className="font-medium">{stock.holdingRatio.toFixed(2)}%</span>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                        <td className="py-2 text-right">
-                          {stock.price > 0 ? `$${stock.price.toFixed(2)}` : "—"}
-                        </td>
-                        <td className="py-2 text-right">
-                          <span
-                            className={
-                              stock.changePercent > 0
-                                ? "text-emerald-500"
-                                : stock.changePercent < 0
-                                  ? "text-red-500"
-                                  : "text-muted-foreground"
-                            }
-                          >
-                            {stock.changePercent > 0 ? "+" : ""}
-                            {stock.changePercent.toFixed(2)}%
-                          </span>
-                        </td>
+          {/* ====== 重仓股行情 ====== */}
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+                <Users className="size-4 text-purple-500" />
+                重仓股行情
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {fund.topHoldings.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-xs text-muted-foreground">
+                        <th className="pb-2 text-left font-medium">代码</th>
+                        <th className="pb-2 text-left font-medium">名称</th>
+                        <th className="pb-2 text-right font-medium">持仓占比</th>
+                        <th className="pb-2 text-right font-medium">最新价</th>
+                        <th className="pb-2 text-right font-medium">涨跌幅</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-center text-sm text-muted-foreground">暂无重仓股数据</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* ====== 历史净值 ====== */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-              <History className="size-4 text-teal-500" />
-              历史净值
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {fund.navHistory.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-xs text-muted-foreground">
-                      <th className="pb-2 text-left font-medium">日期</th>
-                      <th className="pb-2 text-right font-medium">单位净值</th>
-                      <th className="pb-2 text-right font-medium">累计净值</th>
-                      <th className="pb-2 text-right font-medium">日增长率</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {fund.navHistory.map((row) => {
-                      const growth = parseFloat(row.dailyGrowth);
-                      return (
-                        <tr key={row.date} className="border-b last:border-0">
-                          <td className="py-2 text-xs">{row.date}</td>
-                          <td className="py-2 text-right">{row.nav}</td>
-                          <td className="py-2 text-right">{row.accNav}</td>
+                    </thead>
+                    <tbody>
+                      {fund.topHoldings.map((stock) => (
+                        <tr key={stock.symbol} className="border-b last:border-0">
+                          <td className="py-2 font-mono text-xs">{stock.symbol}</td>
+                          <td className="py-2">{stock.name}</td>
+                          <td className="py-2 text-right">
+                            {stock.holdingRatio > 0 ? (
+                              <span className="font-medium">{stock.holdingRatio.toFixed(2)}%</span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="py-2 text-right">
+                            {stock.price > 0 ? `$${stock.price.toFixed(2)}` : "—"}
+                          </td>
                           <td className="py-2 text-right">
                             <span
                               className={
-                                growth > 0
-                                  ? "text-emerald-500"
-                                  : growth < 0
-                                    ? "text-red-500"
+                                stock.changePercent > 0
+                                  ? "text-red-500"
+                                  : stock.changePercent < 0
+                                    ? "text-emerald-500"
                                     : "text-muted-foreground"
                               }
                             >
-                              {isNaN(growth) ? "—" : `${growth > 0 ? "+" : ""}${row.dailyGrowth}%`}
+                              {stock.changePercent > 0 ? "+" : ""}
+                              {stock.changePercent.toFixed(2)}%
                             </span>
                           </td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-center text-sm text-muted-foreground">暂无重仓股数据</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* ====== 历史净值 ====== */}
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+                <History className="size-4 text-teal-500" />
+                历史净值
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {fund.navHistory.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-xs text-muted-foreground">
+                        <th className="pb-2 text-left font-medium">日期</th>
+                        <th className="pb-2 text-right font-medium">单位净值</th>
+                        <th className="pb-2 text-right font-medium">累计净值</th>
+                        <th className="pb-2 text-right font-medium">日增长率</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fund.navHistory.map((row) => {
+                        const growth = parseFloat(row.dailyGrowth);
+                        return (
+                          <tr key={row.date} className="border-b last:border-0">
+                            <td className="py-2 text-xs">{row.date}</td>
+                            <td className="py-2 text-right">{row.nav}</td>
+                            <td className="py-2 text-right">{row.accNav}</td>
+                            <td className="py-2 text-right">
+                              <span
+                                className={
+                                  growth > 0
+                                    ? "text-red-500"
+                                    : growth < 0
+                                      ? "text-emerald-500"
+                                      : "text-muted-foreground"
+                                }
+                              >
+                                {isNaN(growth)
+                                  ? "—"
+                                  : `${growth > 0 ? "+" : ""}${row.dailyGrowth}%`}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-center text-sm text-muted-foreground">暂无历史净值数据</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 基金信息 */}
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-sm md:text-base">基金信息</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-2 text-sm sm:grid-cols-2">
+                <InfoRow label="基金代码" value={fund.code} />
+                <InfoRow label="基金名称" value={fund.name} />
+                {!isOTC && <InfoRow label="跟踪指数" value={fund.index} />}
+                <InfoRow
+                  label={isOTC ? "最新净值" : "当前价格"}
+                  value={`${fund.price}${isOTC ? "" : " 元"}`}
+                />
+                <InfoRow
+                  label={isOTC ? "昨日涨跌" : "今日涨跌"}
+                  value={`${fund.changePercent > 0 ? "+" : ""}${fund.changePercent}%`}
+                />
+                {!isOTC && <InfoRow label="溢价率" value={`+${fund.premium}%`} />}
+                <InfoRow label="基金规模" value={fund.scale} />
+                <InfoRow label="管理费率" value={fund.fee} />
               </div>
-            ) : (
-              <p className="text-center text-sm text-muted-foreground">暂无历史净值数据</p>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {/* 基金信息 */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="text-sm md:text-base">基金信息</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-2 text-sm sm:grid-cols-2">
-              <InfoRow label="基金代码" value={fund.code} />
-              <InfoRow label="基金名称" value={fund.name} />
-              {!isOTC && <InfoRow label="跟踪指数" value={fund.index} />}
-              <InfoRow
-                label={isOTC ? "最新净值" : "当前价格"}
-                value={`${fund.price}${isOTC ? "" : " 元"}`}
-              />
-              <InfoRow
-                label={isOTC ? "昨日涨跌" : "今日涨跌"}
-                value={`${fund.changePercent > 0 ? "+" : ""}${fund.changePercent}%`}
-              />
-              {!isOTC && <InfoRow label="溢价率" value={`+${fund.premium}%`} />}
-              <InfoRow label="基金规模" value={fund.scale} />
-              <InfoRow label="管理费率" value={fund.fee} />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 免责声明 */}
-        <p className="text-center text-xs text-muted-foreground">
-          数据仅供参考，不构成投资建议。溢价率实时变化，请以实际交易数据为准。
-        </p>
+          {/* 免责声明 */}
+          <p className="text-center text-xs text-muted-foreground">
+            数据仅供参考，不构成投资建议。溢价率实时变化，请以实际交易数据为准。
+          </p>
+        </div>
+        {/* 可导出区域结束 */}
       </main>
     </div>
   );
@@ -752,9 +763,9 @@ function PerformanceCard({ label, value }: { label: string; value: number | null
     value === null
       ? "text-muted-foreground"
       : value > 0
-        ? "text-emerald-500"
+        ? "text-red-500"
         : value < 0
-          ? "text-red-500"
+          ? "text-emerald-500"
           : "text-muted-foreground";
 
   return (

@@ -192,18 +192,18 @@ function AnalysisContent({ fund }: { fund: FundDetailData }) {
             <span className="text-2xl font-bold">{fund.price || "—"}</span>
             <span className="flex items-center gap-1 text-xs">
               {fund.changePercent > 0 ? (
-                <TrendingUp className="size-3 text-emerald-500" />
+                <TrendingUp className="size-3 text-red-500" />
               ) : fund.changePercent < 0 ? (
-                <TrendingDown className="size-3 text-red-500" />
+                <TrendingDown className="size-3 text-emerald-500" />
               ) : (
                 <Activity className="size-3 text-muted-foreground" />
               )}
               <span
                 className={
                   fund.changePercent > 0
-                    ? "text-emerald-500"
+                    ? "text-red-500"
                     : fund.changePercent < 0
-                      ? "text-red-500"
+                      ? "text-emerald-500"
                       : ""
                 }
               >
@@ -357,7 +357,7 @@ function AnalysisContent({ fund }: { fund: FundDetailData }) {
                   </div>
                   {mgr.tenureReturn !== null && (
                     <span
-                      className={`text-sm font-medium ${mgr.tenureReturn >= 0 ? "text-emerald-500" : "text-red-500"}`}
+                      className={`text-sm font-medium ${mgr.tenureReturn >= 0 ? "text-red-500" : "text-emerald-500"}`}
                     >
                       任职回报 {mgr.tenureReturn > 0 ? "+" : ""}
                       {mgr.tenureReturn.toFixed(2)}%
@@ -410,9 +410,9 @@ function AnalysisContent({ fund }: { fund: FundDetailData }) {
                         <span
                           className={
                             stock.changePercent > 0
-                              ? "text-emerald-500"
+                              ? "text-red-500"
                               : stock.changePercent < 0
-                                ? "text-red-500"
+                                ? "text-emerald-500"
                                 : ""
                           }
                         >
@@ -460,7 +460,7 @@ function AnalysisContent({ fund }: { fund: FundDetailData }) {
                         <td className="py-2 text-right">
                           <span
                             className={
-                              growth > 0 ? "text-emerald-500" : growth < 0 ? "text-red-500" : ""
+                              growth > 0 ? "text-red-500" : growth < 0 ? "text-emerald-500" : ""
                             }
                           >
                             {isNaN(growth) ? "—" : `${growth > 0 ? "+" : ""}${row.dailyGrowth}%`}
@@ -490,7 +490,7 @@ function PerformanceCard({ label, value }: { label: string; value: number | null
     <div className="rounded-md border p-3 text-center">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div
-        className={`text-lg font-bold ${value === null ? "" : value > 0 ? "text-emerald-500" : value < 0 ? "text-red-500" : ""}`}
+        className={`text-lg font-bold ${value === null ? "" : value > 0 ? "text-red-500" : value < 0 ? "text-emerald-500" : ""}`}
       >
         {value !== null ? `${value > 0 ? "+" : ""}${value.toFixed(2)}%` : "—"}
       </div>
@@ -699,7 +699,7 @@ function NavTrendChart({ data }: { data: Array<{ date: string; nav: number }> })
             净值 <span className="font-medium">{active.nav.toFixed(4)}</span>
           </span>
           {activeChange !== null && (
-            <span className={activeChange >= 0 ? "text-emerald-500" : "text-red-500"}>
+            <span className={activeChange >= 0 ? "text-red-500" : "text-emerald-500"}>
               区间 {activeChange >= 0 ? "+" : ""}
               {activeChange.toFixed(2)}%
             </span>
@@ -750,14 +750,14 @@ function MonthlyHeatmap({
   // 颜色映射
   const getCellColor = (rate: number | undefined): string => {
     if (rate === undefined) return "bg-muted/50";
-    if (rate >= 5) return "bg-emerald-500";
-    if (rate >= 3) return "bg-emerald-400";
-    if (rate >= 1) return "bg-emerald-300/70";
-    if (rate >= 0) return "bg-emerald-200/50";
-    if (rate >= -1) return "bg-red-200/50";
-    if (rate >= -3) return "bg-red-300/70";
-    if (rate >= -5) return "bg-red-400";
-    return "bg-red-500";
+    if (rate >= 5) return "bg-red-500";
+    if (rate >= 3) return "bg-red-400";
+    if (rate >= 1) return "bg-red-300/70";
+    if (rate >= 0) return "bg-red-200/50";
+    if (rate >= -1) return "bg-emerald-200/50";
+    if (rate >= -3) return "bg-emerald-300/70";
+    if (rate >= -5) return "bg-emerald-400";
+    return "bg-emerald-500";
   };
 
   const getCellTextColor = (rate: number | undefined): string => {
@@ -806,7 +806,7 @@ function MonthlyHeatmap({
                   );
                 })}
                 <td
-                  className={`py-0.5 pl-2 text-right font-medium ${yearReturn !== undefined ? (yearReturn >= 0 ? "text-emerald-500" : "text-red-500") : ""}`}
+                  className={`py-0.5 pl-2 text-right font-medium ${yearReturn !== undefined ? (yearReturn >= 0 ? "text-red-500" : "text-emerald-500") : ""}`}
                 >
                   {yearReturn !== undefined
                     ? `${yearReturn >= 0 ? "+" : ""}${(yearReturn * 100).toFixed(2)}%`

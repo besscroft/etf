@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   TrendingUp,
   TrendingDown,
+  GitCompare,
 } from "lucide-react";
 import { getETFPremiumData } from "~/lib/market-data";
 import { DURATION, EASING } from "~/lib/motion";
@@ -40,6 +41,7 @@ export default function ETF() {
   const { etfList, fetchedAt } = useLoaderData<typeof loader>();
   const [sortField, setSortField] = useState<SortField>("premium");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [compareList, setCompareList] = useState<string[]>([]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -48,6 +50,12 @@ export default function ETF() {
       setSortField(field);
       setSortDir(field === "premium" || field === "scale" ? "desc" : "asc");
     }
+  };
+
+  const toggleCompare = (code: string) => {
+    setCompareList((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code],
+    );
   };
 
   const sorted = useMemo(() => {
@@ -133,6 +141,66 @@ export default function ETF() {
           )}
         </AnimatePresence>
 
+        {/* 对比浮动栏 */}
+        <AnimatePresence>
+          {compareList.length > 0 && (
+            <motion.div
+              key="compare-bar"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+              className="mb-4"
+            >
+              <Card className="border-primary/30 bg-primary/5">
+                <CardContent className="flex items-center justify-between px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <GitCompare className="size-4 text-primary" />
+                    <span className="text-sm font-medium">已选 {compareList.length} 只ETF</span>
+                    <div className="flex gap-1">
+                      {compareList.map((code) => {
+                        const etf = etfList.find((e) => e.code === code);
+                        return (
+                          <Badge key={code} variant="secondary" className="text-xs">
+                            {etf?.name?.slice(0, 6) ?? code}
+                            <button
+                              onClick={() => toggleCompare(code)}
+                              className="ml-1 hover:text-destructive"
+                            >
+                              ×
+                            </button>
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setCompareList([])}>
+                      清空
+                    </Button>
+                    {compareList.length >= 2 && (
+                      <Button size="sm" asChild>
+                        <Link to={`/cn/funds?funds=${compareList.join(",")}`}>
+                          <GitCompare className="mr-1 size-3" />
+                          对比
+                        </Link>
+                      </Button>
+                    )}
+                    {compareList.length === 1 && (
+                      <Button size="sm" asChild>
+                        <Link to={`/cn/fund?code=${compareList[0]}`}>
+                          <BarChart3 className="mr-1 size-3" />
+                          分析
+                        </Link>
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* ETF表格 */}
         <FadeIn delay={0.2}>
           <Card>
@@ -141,6 +209,9 @@ export default function ETF() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b bg-muted/30">
+                      <th className="whitespace-nowrap px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">
+                        对比
+                      </th>
                       <ThSortableCell
                         label="代码"
                         field="code"
@@ -183,11 +254,19 @@ export default function ETF() {
                         dir={sortDir}
                         onSort={toggleSort}
                       />
+                      <th className="whitespace-nowrap px-3 py-2.5 text-center text-xs font-medium text-muted-foreground">
+                        操作
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {sorted.map((etf) => (
-                      <ETFRow key={etf.code} etf={etf} />
+                      <ETFRow
+                        key={etf.code}
+                        etf={etf}
+                        isSelected={compareList.includes(etf.code)}
+                        onToggleCompare={() => toggleCompare(etf.code)}
+                      />
                     ))}
                   </tbody>
                 </table>
@@ -285,6 +364,8 @@ function ThSortableCell({
 
 function ETFRow({
   etf,
+  isSelected,
+  onToggleCompare,
 }: {
   etf: {
     code: string;
@@ -296,6 +377,8 @@ function ETFRow({
     scale: string;
     fee: string;
   };
+  isSelected: boolean;
+  onToggleCompare: () => void;
 }) {
   // 溢价等级
   const premiumLevel =
@@ -311,6 +394,15 @@ function ETFRow({
 
   return (
     <tr className="border-b last:border-0 transition-colors hover:bg-muted/30">
+      <td className="py-2.5 px-3">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={onToggleCompare}
+          className="size-3.5 rounded border-muted-foreground/30 accent-primary"
+          aria-label={`选择 ${etf.name} 进行对比`}
+        />
+      </td>
       <td className="py-2.5 px-3 font-mono text-xs">{etf.code}</td>
       <td className="py-2.5 px-3">
         <Link to={`/fund/${etf.code}`} className="hover:text-primary hover:underline text-sm">
@@ -321,7 +413,7 @@ function ETFRow({
       <td className="py-2.5 px-3 text-right">{etf.scale}</td>
       <td className="py-2.5 px-3 text-right">
         <span
-          className={`flex items-center justify-end gap-0.5 ${etf.changePercent > 0 ? "text-emerald-500" : etf.changePercent < 0 ? "text-red-500" : ""}`}
+          className={`flex items-center justify-end gap-0.5 ${etf.changePercent > 0 ? "text-red-500" : etf.changePercent < 0 ? "text-emerald-500" : ""}`}
         >
           {etf.changePercent > 0 ? (
             <TrendingUp className="size-3" />
@@ -341,6 +433,18 @@ function ETFRow({
           >
             {premiumLevel.label}
           </Badge>
+        </div>
+      </td>
+      <td className="py-2.5 px-3 text-center">
+        <div className="flex items-center justify-center gap-1">
+          <Link
+            to={`/cn/fund?code=${etf.code}`}
+            className="inline-flex items-center gap-0.5 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+            title="分析"
+          >
+            <TrendingUp className="size-3" />
+            <span className="hidden lg:inline">分析</span>
+          </Link>
         </div>
       </td>
     </tr>
