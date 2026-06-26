@@ -3,7 +3,7 @@ import { useState, useMemo, useRef } from "react";
 import { Card, CardContent } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { FadeIn } from "~/components/motion";
+import { FadeIn, MotionCard } from "~/components/motion";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowLeft,
@@ -121,10 +121,10 @@ export default function SP500() {
 
         {/* 可导出区域 */}
         <div ref={exportRef} className="bg-background p-2">
-          {/* 筛选器 */}
+          {/* 筛选器：移动端横向滑动，桌面端 flex-wrap */}
           <FadeIn className="mb-4 flex items-center gap-2" delay={0.15}>
-            <Filter className="size-4 text-muted-foreground" />
-            <div className="flex gap-1.5">
+            <Filter className="hidden size-4 shrink-0 text-muted-foreground md:block" />
+            <div className="flex flex-nowrap gap-1.5 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {[
                 { key: "all" as const, label: "全部" },
                 { key: "open" as const, label: `仅开放申购 (${openCount})` },
@@ -135,7 +135,7 @@ export default function SP500() {
                   onClick={() => setFilterStatus(opt.key)}
                   whileTap={{ scale: 0.95 }}
                   transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
-                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  className={`whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                     filterStatus === opt.key
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted text-muted-foreground hover:bg-muted/80"
@@ -147,8 +147,20 @@ export default function SP500() {
             </div>
           </FadeIn>
 
-          {/* 基金表格 */}
-          <FadeIn delay={0.2}>
+          {/* 基金列表：移动端卡片视图（md 以下） */}
+          <FadeIn className="md:hidden" delay={0.15}>
+            <div className="flex flex-col gap-2 pb-4">
+              {filtered.length === 0 && (
+                <div className="py-8 text-center text-sm text-muted-foreground">无匹配基金</div>
+              )}
+              {filtered.map((fund) => (
+                <FundMobileCard key={`mobile-${fund.code}`} fund={fund} />
+              ))}
+            </div>
+          </FadeIn>
+
+          {/* 基金表格：桌面端表格视图（md 及以上） */}
+          <FadeIn className="hidden md:block" delay={0.2}>
             <Card>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
@@ -215,6 +227,7 @@ export default function SP500() {
             {filtered.length === 0 && (
               <motion.div
                 key="empty"
+                className="hidden md:block"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
@@ -335,6 +348,89 @@ function FundRow({ fund }: { fund: OTCFundData }) {
         </Badge>
       </td>
     </tr>
+  );
+}
+
+/**
+ * 移动端基金卡片：信息分层展示，触摸区域充足
+ * 参照首页 QDII 列表卡片视图，保证移动端体验一致
+ */
+function FundMobileCard({ fund }: { fund: OTCFundData }) {
+  const isSuspended = fund.purchaseStatus === "暂停";
+
+  return (
+    <MotionCard hover className={`relative transition-colors ${isSuspended ? "opacity-60" : ""}`}>
+      <CardContent className="p-3">
+        {/* 头部：代码/名称 + 申购状态 */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <span className="font-mono text-xs text-muted-foreground">{fund.code}</span>
+            <Link
+              to={`/fund/${fund.code}`}
+              className="mt-0.5 block truncate text-sm font-medium hover:text-primary"
+            >
+              {fund.name}
+            </Link>
+          </div>
+          <Badge
+            variant={isSuspended ? "destructive" : "secondary"}
+            className="shrink-0 text-[10px]"
+          >
+            {fund.purchaseStatus}
+          </Badge>
+        </div>
+
+        {/* 收益指标：近1年滚动 + 昨日涨跌 */}
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <div>
+            <div className="text-[10px] text-muted-foreground">近1年滚动</div>
+            {fund.returnOneYear !== null ? (
+              <span
+                className={`text-base font-bold ${fund.returnOneYear > 0 ? "text-red-500" : fund.returnOneYear < 0 ? "text-emerald-500" : ""}`}
+              >
+                {fund.returnOneYear > 0 ? "+" : ""}
+                {fund.returnOneYear.toFixed(2)}%
+              </span>
+            ) : (
+              <span className="text-base font-bold text-muted-foreground">—</span>
+            )}
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] text-muted-foreground">昨日涨跌</div>
+            {fund.changeDaily !== null ? (
+              <span
+                className={`flex items-center justify-end gap-0.5 text-sm font-medium ${fund.changeDaily > 0 ? "text-red-500" : fund.changeDaily < 0 ? "text-emerald-500" : ""}`}
+              >
+                {fund.changeDaily > 0 ? (
+                  <TrendingUp className="size-3" />
+                ) : fund.changeDaily < 0 ? (
+                  <TrendingDown className="size-3" />
+                ) : null}
+                {fund.changeDaily > 0 ? "+" : ""}
+                {fund.changeDaily.toFixed(2)}%
+              </span>
+            ) : (
+              <span className="text-sm text-muted-foreground">—</span>
+            )}
+          </div>
+        </div>
+
+        {/* 底部：规模/限额 + 查看详情 */}
+        <div className="mt-2 flex items-center justify-between border-t pt-2">
+          <div className="flex min-w-0 flex-1 flex-col text-xs text-muted-foreground">
+            <span>规模 {fund.scale > 0 ? `${fund.scale.toFixed(1)}亿` : "—"}</span>
+            <span className="truncate">限额 {fund.purchaseLimit}</span>
+          </div>
+          <Link
+            to={`/fund/${fund.code}`}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
+          >
+            <TrendingUp className="size-3" />
+            详情
+          </Link>
+        </div>
+      </CardContent>
+    </MotionCard>
   );
 }
 
