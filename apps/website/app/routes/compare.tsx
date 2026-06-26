@@ -1,6 +1,6 @@
 import type { Route } from "./+types/compare";
 import { useLoaderData, useSearchParams, Link } from "react-router";
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -52,7 +52,6 @@ export default function Compare() {
   const { fundList, fundDetails: initialDetails } = useLoaderData<typeof loader>();
   const [, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
-  const exportRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
   // 已选基金代码列表
@@ -109,7 +108,6 @@ export default function Compare() {
         onAdd={addFund}
         onRemove={removeFund}
         onPin={pinFund}
-        exportRef={exportRef}
       />
     );
   }
@@ -228,10 +226,14 @@ export default function Compare() {
         {/* 对比内容（可导出区域） */}
         <div className="flex items-center justify-end mb-3">
           {initialDetails.length >= 2 && (
-            <ShareExport targetRef={exportRef} fileName="fund-compare" />
+            <ShareExport
+              module="fund-compare"
+              data={{ funds: initialDetails }}
+              fileName="fund-compare"
+            />
           )}
         </div>
-        <div ref={exportRef} className="bg-background p-2">
+        <div className="bg-background p-2">
           {initialDetails.length >= 2 ? (
             <CompareContent funds={initialDetails} onRemove={removeFund} />
           ) : initialDetails.length === 1 ? (

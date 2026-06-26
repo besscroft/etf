@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { getAllQDIIFundData, getFundDetailData, type FundDetailData } from "~/lib/market-data";
 import { DURATION, EASING } from "~/lib/motion";
+import { ShareExport } from "~/components/share-export";
 
 export function meta() {
   return [
@@ -152,7 +153,20 @@ export default function Analysis() {
         </section>
 
         {/* 分析内容 */}
-        {initialDetail ? <AnalysisContent fund={initialDetail} /> : <EmptyState />}
+        {initialDetail ? (
+          <>
+            <div className="mb-3 flex justify-end">
+              <ShareExport
+                module="analysis"
+                data={{ fund: initialDetail }}
+                fileName={`analysis-${initialDetail.code}`}
+              />
+            </div>
+            <AnalysisContent fund={initialDetail} />
+          </>
+        ) : (
+          <EmptyState />
+        )}
       </main>
 
       {/* 移动端全屏搜索面板 */}

@@ -16,6 +16,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { DURATION, EASING } from "~/lib/motion";
+import { ShareExport } from "~/components/share-export";
 
 export function meta() {
   return [
@@ -482,12 +483,15 @@ export default function Stable() {
 
       <main className="container mx-auto max-w-6xl px-3 py-6 sm:px-4">
         {/* 标题区 */}
-        <section className="mb-6">
-          <h1 className="mb-2 text-xl font-bold tracking-tight md:text-2xl">中美稳定理财对比</h1>
-          <p className="text-sm text-muted-foreground md:text-base">
-            梳理中国与美股体系下的低波动资产，包含国债、企业债、REITs等，供参考对比。
-            数据含信用评级、历史最大回撤与入场方式，仅作信息呈现。
-          </p>
+        <section className="mb-6 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="mb-2 text-xl font-bold tracking-tight md:text-2xl">中美稳定理财对比</h1>
+            <p className="text-sm text-muted-foreground md:text-base">
+              梳理中国与美股体系下的低波动资产，包含国债、企业债、REITs等，供参考对比。
+              数据含信用评级、历史最大回撤与入场方式，仅作信息呈现。
+            </p>
+          </div>
+          <ShareExport module="stable" data={{ products: filtered }} fileName="stable-products" />
         </section>
 
         {/* 利差提示 */}

@@ -1,6 +1,6 @@
 import type { Route } from "./+types/fund.$code";
 import { useLoaderData, Link } from "react-router";
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -38,7 +38,6 @@ export async function loader({ params }: Route.LoaderArgs) {
 
 export default function FundDetail() {
   const fund = useLoaderData<typeof loader>();
-  const exportRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="min-h-screen bg-background">
@@ -74,11 +73,11 @@ export default function FundDetail() {
             </div>
             <p className="mt-1 text-sm text-muted-foreground">场外基金</p>
           </div>
-          <ShareExport targetRef={exportRef} fileName={`fund-${fund.code}`} />
+          <ShareExport module="fund-detail" data={{ fund }} fileName={`fund-${fund.code}`} />
         </FadeIn>
 
-        {/* 可导出区域 */}
-        <div ref={exportRef} className="bg-background p-2">
+        {/* 详情区域 */}
+        <div className="bg-background p-2">
           {/* 核心指标卡片 */}
           <StaggerContainer
             className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4"
@@ -327,7 +326,7 @@ export default function FundDetail() {
             数据仅供参考，不构成投资建议。
           </p>
         </div>
-        {/* 可导出区域结束 */}
+        {/* 详情区域结束 */}
       </main>
     </div>
   );

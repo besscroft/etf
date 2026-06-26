@@ -1,5 +1,5 @@
 import { useLoaderData, Link } from "react-router";
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -50,7 +50,6 @@ export default function Active() {
   const [sortField, setSortField] = useState<SortField>("returnOneYear");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
-  const exportRef = useRef<HTMLDivElement>(null);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -131,11 +130,25 @@ export default function Active() {
             </p>
             <p className="text-xs text-muted-foreground">数据来源：天天基金网 / 东方财富</p>
           </div>
-          <ShareExport targetRef={exportRef} fileName="active-us-funds" />
+          <ShareExport
+            module="active"
+            data={{
+              moduleTitle: "场外美股（主动型）",
+              fetchedAt,
+              funds,
+              filterLabel:
+                filterStatus === "open"
+                  ? "仅开放申购"
+                  : filterStatus === "suspended"
+                    ? "暂停申购"
+                    : undefined,
+            }}
+            fileName="active-us-funds"
+          />
         </FadeIn>
 
-        {/* 可导出区域 */}
-        <div ref={exportRef} className="bg-background p-2">
+        {/* 列表区域 */}
+        <div className="bg-background p-2">
           {/* 筛选器：移动端横向滑动，桌面端 flex-wrap */}
           <FadeIn className="mb-4 flex items-center gap-2" delay={0.15}>
             <Filter className="hidden size-4 shrink-0 text-muted-foreground md:block" />
@@ -262,7 +275,7 @@ export default function Active() {
             数据仅供参考，不构成投资建议。申购状态实时变化，请以基金公司公告为准。
           </p>
         </div>
-        {/* 可导出区域结束 */}
+        {/* 列表区域结束 */}
       </main>
     </div>
   );

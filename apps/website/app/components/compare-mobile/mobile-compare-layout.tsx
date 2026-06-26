@@ -12,7 +12,7 @@
  * - 基金增删/排序通过回调透传到父组件，由父组件同步 URL
  * - Tab 切换、Sheet 开关为本地 UI 状态
  */
-import { useState, type RefObject } from "react";
+import { useState } from "react";
 import { Link } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft, BarChart3, Plus } from "lucide-react";
@@ -43,8 +43,6 @@ interface MobileCompareLayoutProps {
   onRemove: (code: string) => void;
   /** 置顶（移到首位，通过重排 URL 实现） */
   onPin?: (code: string) => void;
-  /** 可导出区域 ref */
-  exportRef: RefObject<HTMLDivElement | null>;
 }
 
 export function MobileCompareLayout({
@@ -53,7 +51,6 @@ export function MobileCompareLayout({
   onAdd,
   onRemove,
   onPin,
-  exportRef,
 }: MobileCompareLayoutProps) {
   const [activeTab, setActiveTab] = useState<CompareTab>("metrics");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -114,8 +111,8 @@ export function MobileCompareLayout({
               </div>
             </div>
 
-            {/* 可导出区域 */}
-            <div ref={exportRef} className="bg-background p-3">
+            {/* 对比内容区域 */}
+            <div className="bg-background p-3">
               {canCompare ? (
                 <AnimatePresence mode="wait">
                   <motion.div
@@ -141,7 +138,7 @@ export function MobileCompareLayout({
               {/* 导出按钮 - 仅 ≥2 只时显示 */}
               {canCompare && (
                 <div className="mt-3 flex justify-end" data-exclude-from-export="true">
-                  <ShareExport targetRef={exportRef} fileName="fund-compare" />
+                  <ShareExport module="fund-compare" data={{ funds }} fileName="fund-compare" />
                 </div>
               )}
             </div>

@@ -32,6 +32,7 @@ import {
   type MarketSession,
 } from "~/lib/market-data";
 import { DURATION, EASING } from "~/lib/motion";
+import { ShareExport } from "~/components/share-export";
 
 export function meta() {
   return [
@@ -334,6 +335,12 @@ export default function QDIIValuation() {
                 <RefreshCw className={`mr-1 size-4 ${refreshing ? "animate-spin" : ""}`} />
                 刷新
               </Button>
+              {/* 导出图片 */}
+              <ShareExport
+                module="valuation"
+                data={{ funds, session, fetchedAt }}
+                fileName="qdii-valuation"
+              />
             </div>
           </div>
         </FadeIn>
