@@ -13,7 +13,7 @@
  * - Tab 切换、Sheet 开关为本地 UI 状态
  */
 import { useState } from "react";
-import { Link } from "react-router";
+import { AppLink as Link } from "~/components/ui/link";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft, BarChart3, Plus } from "lucide-react";
 import { DURATION, EASING } from "~/lib/motion";

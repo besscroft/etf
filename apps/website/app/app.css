@@ -143,3 +143,57 @@ body {
     @apply font-serif;
   }
 }
+
+/* ==================== View Transitions 路由转场动画 ====================
+ *
+ * 基于 W3C View Transitions API（document.startViewTransition），
+ * 通过 AppLink 的 viewTransition prop 触发。
+ *
+ * 设计原则：
+ * - 旧页面：向上轻移 + 淡出（200ms easeIn，"抽离"感）
+ * - 新页面：自下方轻移 + 淡入（300ms easeOut，"落定"感）
+ * - 时长总计约 300ms，符合现代 UI 转场感知阈值
+ * - 仅动画 transform / opacity，确保 GPU 加速、无主线程阻塞
+ *
+ * 浏览器兼容性：
+ * - Chrome/Edge 111+、Safari 18+、Firefox 129+ 原生支持
+ * - 不支持的浏览器会自动降级为无动画跳转（React Router 内置处理）
+ *
+ * 无障碍：尊重 prefers-reduced-motion，禁用所有位移/淡入动画
+ */
+
+@keyframes vt-route-fade-out {
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes vt-route-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+::view-transition-old(root) {
+  /* 旧页面退场：快出（easeIn），避免拖沓 */
+  animation: vt-route-fade-out 200ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+::view-transition-new(root) {
+  /* 新页面入场：慢停（easeOut），元素"落定"感 */
+  animation: vt-route-fade-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* 无障碍：减少动画偏好下禁用转场位移 */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}

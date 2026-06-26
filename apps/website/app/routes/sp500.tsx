@@ -1,4 +1,5 @@
-import { useLoaderData, Link } from "react-router";
+import { useLoaderData } from "react-router";
+import { AppLink as Link } from "~/components/ui/link";
 import { useState, useMemo } from "react";
 import { Card, CardContent } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";

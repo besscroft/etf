@@ -5,12 +5,9 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
-  useLocation,
 } from "react-router";
-import { AnimatePresence } from "motion/react";
 
 import type { Route } from "./+types/root";
-import { PageTransition } from "~/components/motion";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [
@@ -45,15 +42,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const location = useLocation();
-  return (
-    <AnimatePresence mode="wait">
-      {/* routeKey 绑定 pathname，路由切换时触发退场→入场过渡 */}
-      <PageTransition routeKey={location.pathname}>
-        <Outlet />
-      </PageTransition>
-    </AnimatePresence>
-  );
+  // 路由转场动画交由原生 View Transitions API 处理：
+  // - 各路由通过 AppLink（viewTransition prop）触发 document.startViewTransition()
+  // - 动画样式定义在 app.css 的 ::view-transition-old/new(root) 规则中
+  // - 相比 Motion 的 AnimatePresence 方案，原生 API 性能更优、与浏览器渲染管线更贴合
+  return <Outlet />;
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

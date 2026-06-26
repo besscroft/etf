@@ -1,5 +1,6 @@
 import type { Route } from "./+types/compare";
-import { useLoaderData, useSearchParams, Link } from "react-router";
+import { useLoaderData, useSearchParams } from "react-router";
+import { AppLink as Link } from "~/components/ui/link";
 import { useState, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
