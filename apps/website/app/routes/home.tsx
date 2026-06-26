@@ -23,6 +23,9 @@ import {
   X,
   TrendingUp,
   Filter,
+  Plus,
+  Check,
+  Layers,
 } from "lucide-react";
 import { getMarketData, type MarketData } from "~/lib/market-data";
 import { useState, useMemo, useEffect, useRef } from "react";
@@ -839,10 +842,10 @@ function QDIIFundSection({ data }: { data: MarketData }) {
         </div>
       </FadeIn>
 
-      {/* 分类筛选 */}
+      {/* 分类筛选：移动端横向滑动一行，桌面端 flex-wrap 多行 */}
       <FadeIn className="mb-2 flex items-center gap-2" delay={0.12}>
-        <Filter className="size-4 text-muted-foreground" />
-        <div className="flex flex-wrap gap-1.5">
+        <Filter className="hidden size-4 shrink-0 text-muted-foreground md:block" />
+        <div className="flex flex-nowrap gap-1.5 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {[
             { key: "all" as const, label: `全部 (${funds.length})` },
             { key: "nasdaq100" as const, label: `纳指100 (${nasdaqCount})` },
@@ -854,7 +857,7 @@ function QDIIFundSection({ data }: { data: MarketData }) {
               onClick={() => setFilterCategory(opt.key)}
               whileTap={{ scale: 0.95 }}
               transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+              className={`whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 filterCategory === opt.key
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted text-muted-foreground hover:bg-muted/80"
@@ -866,9 +869,9 @@ function QDIIFundSection({ data }: { data: MarketData }) {
         </div>
       </FadeIn>
 
-      {/* 申购状态筛选 */}
-      <FadeIn className="mb-4 flex items-center gap-2" delay={0.14}>
-        <div className="flex gap-1.5">
+      {/* 申购状态筛选：移动端 3 等宽，桌面端 flex */}
+      <FadeIn className="mb-4" delay={0.14}>
+        <div className="grid grid-cols-3 gap-1.5 md:flex">
           {[
             { key: "all" as const, label: "全部状态" },
             { key: "open" as const, label: `开放申购 (${openCount})` },
@@ -879,7 +882,7 @@ function QDIIFundSection({ data }: { data: MarketData }) {
               onClick={() => setFilterStatus(opt.key)}
               whileTap={{ scale: 0.95 }}
               transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+              className={`whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-colors md:flex-shrink-0 ${
                 filterStatus === opt.key
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted text-muted-foreground hover:bg-muted/80"
@@ -891,37 +894,35 @@ function QDIIFundSection({ data }: { data: MarketData }) {
         </div>
       </FadeIn>
 
-      {/* 对比浮动栏 */}
+      {/* 对比浮动栏 - 桌面端（列表上方，原样式） */}
       <AnimatePresence>
         {compareList.length > 0 && (
           <motion.div
-            key="compare-bar"
+            key="compare-bar-desktop"
+            className="mb-4 hidden md:block"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
             transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
-            className="mb-4"
           >
             <Card className="border-primary/30 bg-primary/5">
               <CardContent className="flex items-center justify-between px-4 py-3">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium">已选 {compareList.length} 只基金</span>
-                  <div className="flex gap-1">
-                    {compareList.map((code) => {
-                      const fund = funds.find((f) => f.code === code);
-                      return (
-                        <Badge key={code} variant="secondary" className="text-xs">
-                          {fund?.name?.slice(0, 6) ?? code}
-                          <button
-                            onClick={() => toggleCompare(code)}
-                            className="ml-1 hover:text-destructive"
-                          >
-                            ×
-                          </button>
-                        </Badge>
-                      );
-                    })}
-                  </div>
+                  {compareList.map((code) => {
+                    const fund = funds.find((f) => f.code === code);
+                    return (
+                      <Badge key={code} variant="secondary" className="text-xs">
+                        {fund?.name?.slice(0, 6) ?? code}
+                        <button
+                          onClick={() => toggleCompare(code)}
+                          className="ml-1 hover:text-destructive"
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                    );
+                  })}
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => setCompareList([])}>
@@ -944,30 +945,98 @@ function QDIIFundSection({ data }: { data: MarketData }) {
         )}
       </AnimatePresence>
 
+      {/* 对比浮动栏 - 移动端（fixed bottom 悬浮 action bar） */}
+      <AnimatePresence>
+        {compareList.length > 0 && (
+          <motion.div
+            key="compare-bar-mobile"
+            className="fixed inset-x-0 bottom-0 z-50 px-3 md:hidden"
+            style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+            initial={{ opacity: 0, y: 100 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 100 }}
+            transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+          >
+            <div className="rounded-xl border border-primary/30 bg-background/95 p-3 shadow-lg backdrop-blur-md">
+              {/* 头部：标题 + 主操作 */}
+              <div className="mb-2 flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Layers className="size-4 text-primary" />
+                  <span className="text-sm font-medium">对比栏</span>
+                  <span className="text-xs text-muted-foreground">({compareList.length})</span>
+                </div>
+                <div className="flex gap-1.5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setCompareList([])}
+                    className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    清空
+                  </Button>
+                  {compareList.length >= 2 && (
+                    <Button size="sm" asChild className="h-7 px-3 text-xs">
+                      <Link to={`/cn/funds?funds=${compareList.join(",")}`}>
+                        对比 <ArrowRight className="ml-0.5 size-3" />
+                      </Link>
+                    </Button>
+                  )}
+                  {compareList.length === 1 && (
+                    <Button size="sm" asChild className="h-7 px-3 text-xs">
+                      <Link to={`/cn/fund?code=${compareList[0]}`}>
+                        分析 <ArrowRight className="ml-0.5 size-3" />
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {/* 已选徽章：自动换行 */}
+              <div className="flex flex-wrap gap-1">
+                {compareList.map((code) => {
+                  const fund = funds.find((f) => f.code === code);
+                  return (
+                    <Badge key={code} variant="secondary" className="text-xs">
+                      {fund?.name?.slice(0, 8) ?? code}
+                      <button
+                        onClick={() => toggleCompare(code)}
+                        className="ml-1 hover:text-destructive"
+                        aria-label={`移除 ${fund?.name ?? code}`}
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </Badge>
+                  );
+                })}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* 基金列表：移动端卡片视图（md 以下） */}
       <FadeIn className="md:hidden" delay={0.15}>
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 pb-24">
           {filtered.length === 0 && (
             <div className="py-8 text-center text-sm text-muted-foreground">无匹配基金</div>
           )}
           {filtered.map((fund) => {
             const isSuspended = fund.purchaseStatus === "暂停";
+            const isSelected = compareList.includes(fund.code);
             return (
               <MotionCard
                 key={`mobile-${fund.category}-${fund.code}`}
                 hover
-                className={isSuspended ? "opacity-60" : ""}
+                className={`relative transition-colors ${
+                  isSelected
+                    ? "border-primary ring-1 ring-primary/40"
+                    : isSuspended
+                      ? "opacity-60"
+                      : ""
+                }`}
               >
                 <CardContent className="p-3">
-                  {/* 头部：复选框 + 代码/名称/类型 + 申购状态 */}
-                  <div className="flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      checked={compareList.includes(fund.code)}
-                      onChange={() => toggleCompare(fund.code)}
-                      className="mt-1 size-3.5 rounded border-muted-foreground/30 accent-primary"
-                      aria-label={`选择 ${fund.name} 进行对比`}
-                    />
+                  {/* 头部：代码/类型 + 申购状态 */}
+                  <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className="font-mono text-xs text-muted-foreground">{fund.code}</span>
@@ -1022,16 +1091,44 @@ function QDIIFundSection({ data }: { data: MarketData }) {
                     </div>
                   </div>
 
-                  {/* 底部：规模 + 限额 + 分析入口 */}
-                  <div className="mt-2 flex items-center justify-between border-t pt-2 text-xs text-muted-foreground">
-                    <span>规模 {fund.scale > 0 ? `${fund.scale.toFixed(1)}亿` : "—"}</span>
-                    <span className="truncate px-2">限额 {fund.purchaseLimit}</span>
-                    <Link
-                      to={`/cn/fund?code=${fund.code}`}
-                      className="inline-flex shrink-0 items-center gap-0.5 text-primary"
-                    >
-                      分析 <TrendingUp className="size-3" />
-                    </Link>
+                  {/* 底部操作行：规模/限额 + 分析 + 加入对比 */}
+                  <div className="mt-2 flex items-center justify-between border-t pt-2">
+                    <div className="flex min-w-0 flex-1 flex-col text-xs text-muted-foreground">
+                      <span>规模 {fund.scale > 0 ? `${fund.scale.toFixed(1)}亿` : "—"}</span>
+                      <span className="truncate">限额 {fund.purchaseLimit}</span>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Link
+                        to={`/cn/fund?code=${fund.code}`}
+                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
+                      >
+                        <TrendingUp className="size-3" />
+                        分析
+                      </Link>
+                      <motion.button
+                        onClick={() => toggleCompare(fund.code)}
+                        whileTap={{ scale: 0.9 }}
+                        transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
+                        aria-pressed={isSelected}
+                        className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                          isSelected
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                        }`}
+                      >
+                        {isSelected ? (
+                          <>
+                            <Check className="size-3" />
+                            已加入
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="size-3" />
+                            对比
+                          </>
+                        )}
+                      </motion.button>
+                    </div>
                   </div>
                 </CardContent>
               </MotionCard>
