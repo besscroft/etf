@@ -11,6 +11,5 @@ export default [
   route("qdii-valuation", "routes/qdii-valuation.tsx"),
   route("nasdaq", "routes/nasdaq.tsx"),
   route("sp500", "routes/sp500.tsx"),
-  route("etf", "routes/etf.tsx"),
   route("active", "routes/active.tsx"),
 ] satisfies RouteConfig;

@@ -33,8 +33,7 @@ export function meta(_args: Route.MetaArgs) {
     { title: "ETFVoid - 美股ETF与QDII基金追踪平台" },
     {
       name: "description",
-      content:
-        "覆盖纳斯达克100、标普500被动指数及主动型QDII基金，提供费率对比、溢价监控与申购状态追踪。",
+      content: "覆盖纳斯达克100、标普500被动指数及主动型QDII基金，提供费率对比与申购状态追踪。",
     },
   ];
 }
@@ -79,7 +78,6 @@ function Header({
     { label: "首页", href: "/" },
     { label: "纳指被动", href: "/nasdaq" },
     { label: "标普500", href: "/sp500" },
-    { label: "场内ETF", href: "/etf" },
     { label: "美股主动", href: "/active" },
   ];
 

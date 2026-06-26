@@ -17,7 +17,7 @@ import {
   Trophy,
   Trash2,
 } from "lucide-react";
-import { getETFPremiumData, getFundCompareData, type FundDetailData } from "~/lib/market-data";
+import { getAllQDIIFundData, getFundCompareData, type FundDetailData } from "~/lib/market-data";
 import { DURATION, EASING } from "~/lib/motion";
 import { ShareExport } from "~/components/share-export";
 
@@ -37,12 +37,12 @@ export async function loader({ request }: Route.LoaderArgs) {
     .filter(Boolean);
 
   // 并行获取基金列表和已选基金详情
-  const [etfList, fundDetails] = await Promise.all([
-    getETFPremiumData(),
+  const [fundList, fundDetails] = await Promise.all([
+    getAllQDIIFundData(),
     codes.length > 0 ? getFundCompareData(codes) : Promise.resolve([]),
   ]);
 
-  return { etfList, fundDetails };
+  return { fundList, fundDetails };
 }
 
 /** 对比颜色序列 */
@@ -56,7 +56,7 @@ const COMPARE_COLORS = [
 const MAX_COMPARE = 4;
 
 export default function Compare() {
-  const { etfList, fundDetails: initialDetails } = useLoaderData<typeof loader>();
+  const { fundList, fundDetails: initialDetails } = useLoaderData<typeof loader>();
   const [, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const exportRef = useRef<HTMLDivElement>(null);
@@ -84,15 +84,15 @@ export default function Compare() {
   );
 
   // 搜索过滤
-  const filteredEtfs = useMemo(() => {
+  const filteredFunds = useMemo(() => {
     if (!searchQuery.trim()) return [];
     const q = searchQuery.trim().toLowerCase();
-    return etfList.filter(
-      (e) =>
-        !selectedCodes.includes(e.code) &&
-        (e.code.toLowerCase().includes(q) || e.name.toLowerCase().includes(q)),
+    return fundList.filter(
+      (f) =>
+        !selectedCodes.includes(f.code) &&
+        (f.code.toLowerCase().includes(q) || f.name.toLowerCase().includes(q)),
     );
-  }, [etfList, searchQuery, selectedCodes]);
+  }, [fundList, searchQuery, selectedCodes]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -143,20 +143,20 @@ export default function Compare() {
           </div>
 
           {/* 搜索结果下拉 */}
-          {filteredEtfs.length > 0 && (
+          {filteredFunds.length > 0 && (
             <div className="mt-1 max-h-60 overflow-y-auto rounded-md border bg-background shadow-md">
-              {filteredEtfs.map((etf) => (
+              {filteredFunds.map((f) => (
                 <button
-                  key={etf.code}
+                  key={f.code}
                   onClick={() => {
-                    addFund(etf.code);
+                    addFund(f.code);
                     setSearchQuery("");
                   }}
                   className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-muted transition-colors"
                 >
                   <span>
-                    <span className="font-mono text-xs text-muted-foreground">{etf.code}</span>
-                    <span className="ml-2">{etf.name}</span>
+                    <span className="font-mono text-xs text-muted-foreground">{f.code}</span>
+                    <span className="ml-2">{f.name}</span>
                   </span>
                   <Plus className="size-4 text-muted-foreground" />
                 </button>
@@ -315,20 +315,11 @@ function MetricsComparison({
             </thead>
             <tbody>
               <MetricRow label="基金代码" values={funds.map((f) => f.code)} />
-              <MetricRow label="跟踪指数" values={funds.map((f) => f.index)} />
               <MetricRow
-                label="当前价格"
+                label="最新净值"
                 values={funds.map((f) => (f.price > 0 ? `${f.price}` : "—"))}
               />
-              <MetricRow label="今日涨跌" values={funds.map((f) => f.changePercent)} isChange />
-              <MetricRow
-                label="溢价率"
-                values={funds.map((f) => (f.premium !== undefined ? `${f.premium}%` : "—"))}
-                highlight={(idx) => {
-                  const p = funds[idx].premium;
-                  return p >= 3 ? "text-red-500" : p >= 2 ? "text-amber-500" : "";
-                }}
-              />
+              <MetricRow label="涨跌幅" values={funds.map((f) => f.changePercent)} isChange />
               <MetricRow label="基金规模" values={funds.map((f) => f.scale)} />
               <MetricRow label="管理费率" values={funds.map((f) => f.fee)} />
             </tbody>

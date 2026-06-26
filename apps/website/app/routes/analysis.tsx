@@ -14,7 +14,6 @@ import {
   TrendingUp,
   TrendingDown,
   Activity,
-  AlertTriangle,
   LineChart,
   Trophy,
   History,
@@ -22,7 +21,7 @@ import {
   Gauge,
   Calendar,
 } from "lucide-react";
-import { getETFPremiumData, getFundDetailData, type FundDetailData } from "~/lib/market-data";
+import { getAllQDIIFundData, getFundDetailData, type FundDetailData } from "~/lib/market-data";
 import { DURATION, EASING } from "~/lib/motion";
 
 export function meta() {
@@ -40,27 +39,27 @@ export async function loader({ request }: Route.LoaderArgs) {
   const code = url.searchParams.get("code") ?? "";
 
   // 并行获取基金列表和指定基金详情
-  const [etfList, fundDetail] = await Promise.all([
-    getETFPremiumData(),
+  const [fundList, fundDetail] = await Promise.all([
+    getAllQDIIFundData(),
     code ? getFundDetailData(code) : Promise.resolve(null),
   ]);
 
-  return { etfList, fundDetail };
+  return { fundList, fundDetail };
 }
 
 export default function Analysis() {
-  const { etfList, fundDetail: initialDetail } = useLoaderData<typeof loader>();
+  const { fundList, fundDetail: initialDetail } = useLoaderData<typeof loader>();
   const [, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
 
   // 搜索过滤
-  const filteredEtfs = useMemo(() => {
+  const filteredFunds = useMemo(() => {
     if (!searchQuery.trim()) return [];
     const q = searchQuery.trim().toLowerCase();
-    return etfList.filter(
-      (e) => e.code.toLowerCase().includes(q) || e.name.toLowerCase().includes(q),
+    return fundList.filter(
+      (f) => f.code.toLowerCase().includes(q) || f.name.toLowerCase().includes(q),
     );
-  }, [etfList, searchQuery]);
+  }, [fundList, searchQuery]);
 
   const selectFund = (code: string) => {
     setSearchParams({ code });
@@ -114,19 +113,19 @@ export default function Analysis() {
           </div>
 
           {/* 搜索结果下拉 */}
-          {filteredEtfs.length > 0 && (
+          {filteredFunds.length > 0 && (
             <div className="mt-1 max-h-60 overflow-y-auto rounded-md border bg-background shadow-md">
-              {filteredEtfs.slice(0, 20).map((etf) => (
+              {filteredFunds.slice(0, 20).map((f) => (
                 <button
-                  key={etf.code}
-                  onClick={() => selectFund(etf.code)}
+                  key={f.code}
+                  onClick={() => selectFund(f.code)}
                   className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-muted transition-colors"
                 >
                   <span>
-                    <span className="font-mono text-xs text-muted-foreground">{etf.code}</span>
-                    <span className="ml-2">{etf.name}</span>
+                    <span className="font-mono text-xs text-muted-foreground">{f.code}</span>
+                    <span className="ml-2">{f.name}</span>
                   </span>
-                  <span className="text-xs text-muted-foreground">{etf.index}</span>
+                  <span className="text-xs text-muted-foreground">{f.categoryLabel}</span>
                 </button>
               ))}
             </div>
@@ -161,16 +160,6 @@ function EmptyState() {
 /* ==================== 分析内容主体 ==================== */
 
 function AnalysisContent({ fund }: { fund: FundDetailData }) {
-  // 溢价等级
-  const premiumLevel =
-    fund.premium >= 3
-      ? { label: "极高", color: "text-red-500", bg: "bg-red-500/10" }
-      : fund.premium >= 2
-        ? { label: "偏高", color: "text-amber-500", bg: "bg-amber-500/10" }
-        : fund.premium >= 1
-          ? { label: "注意", color: "text-amber-400", bg: "bg-amber-400/10" }
-          : { label: "正常", color: "text-emerald-500", bg: "bg-emerald-500/10" };
-
   return (
     <div className="space-y-6">
       {/* 基金标题 */}
@@ -181,14 +170,14 @@ function AnalysisContent({ fund }: { fund: FundDetailData }) {
             {fund.code}
           </Badge>
         </div>
-        <p className="mt-1 text-sm text-muted-foreground">跟踪指数：{fund.index}</p>
+        <p className="mt-1 text-sm text-muted-foreground">场外基金</p>
       </div>
 
       {/* 核心指标 */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
-            <span className="text-xs text-muted-foreground">当前价格</span>
+            <span className="text-xs text-muted-foreground">最新净值</span>
             <span className="text-2xl font-bold">{fund.price || "—"}</span>
             <span className="flex items-center gap-1 text-xs">
               {fund.changePercent > 0 ? (
@@ -215,9 +204,15 @@ function AnalysisContent({ fund }: { fund: FundDetailData }) {
         </Card>
         <Card>
           <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
-            <span className="text-xs text-muted-foreground">溢价率</span>
-            <span className={`text-2xl font-bold ${premiumLevel.color}`}>+{fund.premium}%</span>
-            <span className={`text-xs ${premiumLevel.color}`}>{premiumLevel.label}</span>
+            <span className="text-xs text-muted-foreground">近1年收益</span>
+            <span
+              className={`text-2xl font-bold ${(fund.performance.oneYear ?? 0) >= 0 ? "text-red-500" : "text-emerald-500"}`}
+            >
+              {fund.performance.oneYear !== null
+                ? `${fund.performance.oneYear > 0 ? "+" : ""}${fund.performance.oneYear}%`
+                : "—"}
+            </span>
+            <span className="text-xs text-muted-foreground">阶段涨幅</span>
           </CardContent>
         </Card>
         <Card>
@@ -237,48 +232,6 @@ function AnalysisContent({ fund }: { fund: FundDetailData }) {
           </CardContent>
         </Card>
       </div>
-
-      {/* 溢价分析 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-            <AlertTriangle className="size-4 text-amber-500" />
-            溢价分析
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-3">
-            <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-              <span>折价</span>
-              <span>0%</span>
-              <span>溢价</span>
-            </div>
-            <div className="relative h-3 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className={`absolute left-1/2 top-0 h-full rounded-full transition-all ${
-                  fund.premium >= 3
-                    ? "bg-red-500"
-                    : fund.premium >= 2
-                      ? "bg-amber-500"
-                      : "bg-emerald-500"
-                }`}
-                style={{ width: `${Math.min(50, (fund.premium / 10) * 50)}%` }}
-              />
-            </div>
-          </div>
-          <div className={`rounded-md p-3 ${premiumLevel.bg}`}>
-            <p className={`text-sm ${premiumLevel.color}`}>
-              {fund.premium >= 3
-                ? "溢价极高！建议等待溢价收窄后再买入，避免高位接盘。"
-                : fund.premium >= 2
-                  ? "溢价偏高，买入需谨慎。"
-                  : fund.premium >= 1
-                    ? "溢价适中，可关注。"
-                    : "溢价较低，相对安全。"}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* 净值走势 */}
       <Card>
@@ -476,9 +429,7 @@ function AnalysisContent({ fund }: { fund: FundDetailData }) {
         </Card>
       )}
 
-      <p className="text-center text-xs text-muted-foreground">
-        数据仅供参考，不构成投资建议。溢价率实时变化，请以实际交易数据为准。
-      </p>
+      <p className="text-center text-xs text-muted-foreground">数据仅供参考，不构成投资建议。</p>
     </div>
   );
 }
