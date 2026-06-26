@@ -944,8 +944,104 @@ function QDIIFundSection({ data }: { data: MarketData }) {
         )}
       </AnimatePresence>
 
-      {/* 基金表格 */}
-      <FadeIn delay={0.15}>
+      {/* 基金列表：移动端卡片视图（md 以下） */}
+      <FadeIn className="md:hidden" delay={0.15}>
+        <div className="flex flex-col gap-2">
+          {filtered.length === 0 && (
+            <div className="py-8 text-center text-sm text-muted-foreground">无匹配基金</div>
+          )}
+          {filtered.map((fund) => {
+            const isSuspended = fund.purchaseStatus === "暂停";
+            return (
+              <MotionCard
+                key={`mobile-${fund.category}-${fund.code}`}
+                hover
+                className={isSuspended ? "opacity-60" : ""}
+              >
+                <CardContent className="p-3">
+                  {/* 头部：复选框 + 代码/名称/类型 + 申购状态 */}
+                  <div className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={compareList.includes(fund.code)}
+                      onChange={() => toggleCompare(fund.code)}
+                      className="mt-1 size-3.5 rounded border-muted-foreground/30 accent-primary"
+                      aria-label={`选择 ${fund.name} 进行对比`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-xs text-muted-foreground">{fund.code}</span>
+                        <span
+                          className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-medium ${CATEGORY_COLORS[fund.category] ?? ""}`}
+                        >
+                          {fund.categoryLabel}
+                        </span>
+                      </div>
+                      <Link
+                        to={`/fund/${fund.code}`}
+                        className="mt-0.5 block truncate text-sm font-medium hover:text-primary"
+                      >
+                        {fund.name}
+                      </Link>
+                    </div>
+                    <Badge
+                      variant={isSuspended ? "destructive" : "secondary"}
+                      className="shrink-0 text-[10px]"
+                    >
+                      {fund.purchaseStatus}
+                    </Badge>
+                  </div>
+
+                  {/* 收益指标：近1年 + 昨日涨跌 */}
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div>
+                      <div className="text-[10px] text-muted-foreground">近1年</div>
+                      {fund.returnOneYear !== null ? (
+                        <span
+                          className={`text-base font-bold ${fund.returnOneYear > 0 ? "text-red-500" : fund.returnOneYear < 0 ? "text-emerald-500" : ""}`}
+                        >
+                          {fund.returnOneYear > 0 ? "+" : ""}
+                          {fund.returnOneYear.toFixed(2)}%
+                        </span>
+                      ) : (
+                        <span className="text-base font-bold text-muted-foreground">—</span>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] text-muted-foreground">昨日涨跌</div>
+                      {fund.changeDaily !== null ? (
+                        <span
+                          className={`text-sm font-medium ${fund.changeDaily > 0 ? "text-red-500" : fund.changeDaily < 0 ? "text-emerald-500" : ""}`}
+                        >
+                          {fund.changeDaily > 0 ? "+" : ""}
+                          {fund.changeDaily.toFixed(2)}%
+                        </span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 底部：规模 + 限额 + 分析入口 */}
+                  <div className="mt-2 flex items-center justify-between border-t pt-2 text-xs text-muted-foreground">
+                    <span>规模 {fund.scale > 0 ? `${fund.scale.toFixed(1)}亿` : "—"}</span>
+                    <span className="truncate px-2">限额 {fund.purchaseLimit}</span>
+                    <Link
+                      to={`/cn/fund?code=${fund.code}`}
+                      className="inline-flex shrink-0 items-center gap-0.5 text-primary"
+                    >
+                      分析 <TrendingUp className="size-3" />
+                    </Link>
+                  </div>
+                </CardContent>
+              </MotionCard>
+            );
+          })}
+        </div>
+      </FadeIn>
+
+      {/* 基金表格：桌面端表格视图（md 及以上） */}
+      <FadeIn className="hidden md:block" delay={0.15}>
         <Card>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
