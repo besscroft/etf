@@ -20,6 +20,9 @@ import {
 import { getAllQDIIFundData, getFundCompareData, type FundDetailData } from "~/lib/market-data";
 import { DURATION, EASING } from "~/lib/motion";
 import { ShareExport } from "~/components/share-export";
+import { useIsMobile } from "~/hooks/use-media-query";
+import { MobileCompareLayout } from "~/components/compare-mobile";
+import { COMPARE_COLORS, MAX_COMPARE } from "~/components/compare-mobile/constants";
 
 export function meta() {
   return [
@@ -45,21 +48,12 @@ export async function loader({ request }: Route.LoaderArgs) {
   return { fundList, fundDetails };
 }
 
-/** 对比颜色序列 */
-const COMPARE_COLORS = [
-  { line: "#3b82f6", fill: "rgba(59,130,246,0.1)", label: "蓝" }, // 蓝
-  { line: "#ef4444", fill: "rgba(239,68,68,0.1)", label: "红" }, // 红
-  { line: "#10b981", fill: "rgba(16,185,129,0.1)", label: "绿" }, // 绿
-  { line: "#f59e0b", fill: "rgba(245,158,11,0.1)", label: "橙" }, // 橙
-];
-
-const MAX_COMPARE = 4;
-
 export default function Compare() {
   const { fundList, fundDetails: initialDetails } = useLoaderData<typeof loader>();
   const [, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const exportRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
 
   // 已选基金代码列表
   const selectedCodes = useMemo(() => initialDetails.map((f) => f.code), [initialDetails]);
@@ -83,7 +77,18 @@ export default function Compare() {
     [selectedCodes, setSearchParams],
   );
 
-  // 搜索过滤
+  // 置顶：将指定基金移到 funds 参数首位
+  const pinFund = useCallback(
+    (code: string) => {
+      if (!selectedCodes.includes(code)) return;
+      const others = selectedCodes.filter((c) => c !== code);
+      const newCodes = [code, ...others];
+      setSearchParams({ funds: newCodes.join(",") });
+    },
+    [selectedCodes, setSearchParams],
+  );
+
+  // 搜索过滤（桌面端使用，必须先于早返回调用以保持 hooks 顺序）
   const filteredFunds = useMemo(() => {
     if (!searchQuery.trim()) return [];
     const q = searchQuery.trim().toLowerCase();
@@ -93,6 +98,21 @@ export default function Compare() {
         (f.code.toLowerCase().includes(q) || f.name.toLowerCase().includes(q)),
     );
   }, [fundList, searchQuery, selectedCodes]);
+
+  // 移动端：直接渲染移动端布局，桌面端走原逻辑
+  // 注意：所有 hooks 必须在此之前调用完毕
+  if (isMobile) {
+    return (
+      <MobileCompareLayout
+        funds={initialDetails}
+        fundList={fundList}
+        onAdd={addFund}
+        onRemove={removeFund}
+        onPin={pinFund}
+        exportRef={exportRef}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
