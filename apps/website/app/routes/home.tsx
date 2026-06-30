@@ -23,12 +23,12 @@ import {
   Menu,
   X,
   TrendingUp,
-  Filter,
   Plus,
   Check,
   Layers,
 } from "lucide-react";
 import { getMarketData, type MarketData } from "~/lib/market-data";
+import { cn } from "~/lib/utils";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useMotionConfig, DURATION, EASING, DISTANCE } from "~/lib/motion";
 
@@ -57,7 +57,7 @@ export default function Home() {
         mobileMenuOpen={mobileMenuOpen}
         onToggleMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
       />
-      <main className="container mx-auto max-w-6xl px-3 pb-16 sm:px-4">
+      <main className="container mx-auto max-w-6xl px-3 pb-4 sm:px-4">
         <HeroSection data={data} />
         <MarketIndicators data={data} />
         <MarketTemperature data={data} />
@@ -843,56 +843,27 @@ function QDIIFundSection({ data }: { data: MarketData }) {
         </div>
       </FadeIn>
 
-      {/* 分类筛选：移动端横向滑动一行，桌面端 flex-wrap 多行 */}
-      <FadeIn className="mb-2 flex items-center gap-2" delay={0.12}>
-        <Filter className="hidden size-4 shrink-0 text-muted-foreground md:block" />
-        <div className="flex flex-nowrap gap-1.5 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {[
-            { key: "all" as const, label: `全部 (${funds.length})` },
-            { key: "nasdaq100" as const, label: `纳指100 (${nasdaqCount})` },
-            { key: "sp500" as const, label: `标普500 (${sp500Count})` },
-            { key: "active" as const, label: `主动型 (${activeCount})` },
-          ].map((opt) => (
-            <motion.button
-              key={opt.key}
-              onClick={() => setFilterCategory(opt.key)}
-              whileTap={{ scale: 0.95 }}
-              transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
-              className={`whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                filterCategory === opt.key
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
-            >
-              {opt.label}
-            </motion.button>
-          ))}
-        </div>
-      </FadeIn>
-
-      {/* 申购状态筛选：移动端 3 等宽，桌面端 flex */}
-      <FadeIn className="mb-4" delay={0.14}>
-        <div className="grid grid-cols-3 gap-1.5 md:flex">
-          {[
-            { key: "all" as const, label: "全部状态" },
-            { key: "open" as const, label: `开放申购 (${openCount})` },
-            { key: "suspended" as const, label: `暂停申购 (${suspendedCount})` },
-          ].map((opt) => (
-            <motion.button
-              key={opt.key}
-              onClick={() => setFilterStatus(opt.key)}
-              whileTap={{ scale: 0.95 }}
-              transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
-              className={`whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-colors md:flex-shrink-0 ${
-                filterStatus === opt.key
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
-            >
-              {opt.label}
-            </motion.button>
-          ))}
-        </div>
+      {/* 筛选：分类 + 状态。始终单行；移动端紧凑（更小 padding + 隐藏 count）以 fit 视口。 */}
+      <FadeIn className="mb-4 flex flex-nowrap items-center gap-2 sm:gap-3" delay={0.12}>
+        <SegmentedFilter
+          value={filterCategory}
+          onChange={setFilterCategory}
+          options={[
+            { key: "all", label: "全部", count: funds.length },
+            { key: "nasdaq100", label: "纳指", count: nasdaqCount },
+            { key: "sp500", label: "标普", count: sp500Count },
+            { key: "active", label: "主动", count: activeCount },
+          ]}
+        />
+        <SegmentedFilter
+          value={filterStatus}
+          onChange={setFilterStatus}
+          options={[
+            { key: "all", label: "全部" },
+            { key: "open", label: "开放", count: openCount },
+            { key: "suspended", label: "暂停", count: suspendedCount },
+          ]}
+        />
       </FadeIn>
 
       {/* 对比浮动栏 - 桌面端（列表上方，原样式） */}
@@ -1146,9 +1117,6 @@ function QDIIFundSection({ data }: { data: MarketData }) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/30">
-                    <th className="whitespace-nowrap px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">
-                      对比
-                    </th>
                     <QDIIThSortable
                       label="代码"
                       field="code"
@@ -1213,20 +1181,12 @@ function QDIIFundSection({ data }: { data: MarketData }) {
                 <tbody>
                   {filtered.map((fund) => {
                     const isSuspended = fund.purchaseStatus === "暂停";
+                    const isSelected = compareList.includes(fund.code);
                     return (
                       <tr
                         key={`${fund.category}-${fund.code}`}
                         className={`border-b last:border-0 transition-colors hover:bg-muted/30 ${isSuspended ? "opacity-60" : ""}`}
                       >
-                        <td className="py-2.5 px-3">
-                          <input
-                            type="checkbox"
-                            checked={compareList.includes(fund.code)}
-                            onChange={() => toggleCompare(fund.code)}
-                            className="size-3.5 rounded border-muted-foreground/30 accent-primary"
-                            aria-label={`选择 ${fund.name} 进行对比`}
-                          />
-                        </td>
                         <td className="py-2.5 px-3 font-mono text-xs">{fund.code}</td>
                         <td className="py-2.5 px-3">
                           <Link
@@ -1291,6 +1251,30 @@ function QDIIFundSection({ data }: { data: MarketData }) {
                               <TrendingUp className="size-3" />
                               <span className="hidden lg:inline">分析</span>
                             </Link>
+                            <motion.button
+                              onClick={() => toggleCompare(fund.code)}
+                              whileTap={{ scale: 0.9 }}
+                              transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
+                              aria-pressed={isSelected}
+                              title={isSelected ? "已加入对比" : "加入对比"}
+                              className={`inline-flex items-center gap-0.5 rounded-sm px-1.5 py-0.5 text-xs transition-colors ${
+                                isSelected
+                                  ? "bg-primary text-primary-foreground"
+                                  : "text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                              }`}
+                            >
+                              {isSelected ? (
+                                <>
+                                  <Check className="size-3" />
+                                  <span className="hidden lg:inline">已加入</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Plus className="size-3" />
+                                  <span className="hidden lg:inline">对比</span>
+                                </>
+                              )}
+                            </motion.button>
                           </div>
                         </td>
                       </tr>
@@ -1302,10 +1286,6 @@ function QDIIFundSection({ data }: { data: MarketData }) {
           </CardContent>
         </Card>
       </FadeIn>
-
-      <p className="mt-4 text-center text-xs text-muted-foreground">
-        数据仅供参考，不构成投资建议。申购状态实时变化，请以基金公司公告为准。
-      </p>
     </section>
   );
 }
@@ -1335,6 +1315,55 @@ function QDIIThSortable({
         {isActive ? (dir === "asc" ? "↑" : "↓") : "↕"}
       </button>
     </th>
+  );
+}
+
+/**
+ * Segmented control 风格筛选器
+ * 浅色背景容器 + 激活态用白底 + 微妙阴影，文案与 count 分两层排版
+ */
+function SegmentedFilter<K extends string>({
+  value,
+  onChange,
+  options,
+  className,
+}: {
+  value: K;
+  onChange: (v: K) => void;
+  options: { key: K; label: string; count?: number }[];
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "inline-flex shrink-0 items-center rounded-md border bg-muted/40 p-0.5",
+        className,
+      )}
+    >
+      {options.map((opt) => {
+        const active = opt.key === value;
+        return (
+          <button
+            key={opt.key}
+            onClick={() => onChange(opt.key)}
+            className={`rounded-[3px] px-1.5 py-1 text-[11px] whitespace-nowrap transition-colors sm:px-2.5 sm:text-xs ${
+              active
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {opt.label}
+            {typeof opt.count === "number" && (
+              <span
+                className={`ml-1 hidden text-[10px] sm:inline ${active ? "text-muted-foreground" : "opacity-60"}`}
+              >
+                {opt.count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
