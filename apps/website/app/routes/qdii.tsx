@@ -21,6 +21,7 @@ import {
 import { getAllQDIIFundData, type QDIIFundData, type QDIICategory } from "~/lib/market-data";
 import { DURATION, EASING } from "~/lib/motion";
 import { ShareExport } from "~/components/share-export";
+import { AppHeader } from "~/components/app-header";
 
 export function meta() {
   return [
@@ -146,7 +147,7 @@ export default function QDII() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+      <AppHeader currentLabel="QDII 基金" />
       <main className="container mx-auto max-w-6xl px-3 py-6 sm:px-4">
         {/* 标题区 */}
         <FadeIn className="mb-6 flex items-end justify-between" delay={0.1}>
@@ -415,31 +416,6 @@ export default function QDII() {
         {/* 列表区域结束 */}
       </main>
     </div>
-  );
-}
-
-function Header() {
-  return (
-    <motion.header
-      className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm"
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
-    >
-      <div className="container mx-auto flex max-w-6xl items-center gap-3 px-3 py-3 sm:px-4">
-        <Link to="/">
-          <Button variant="ghost" size="icon" aria-label="返回首页">
-            <ArrowLeft className="size-5" />
-          </Button>
-        </Link>
-        <BarChart3 className="size-5 text-primary" />
-        <Link to="/" className="text-lg font-semibold tracking-tight hover:underline">
-          ETFVoid
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <span className="font-medium">QDII 基金</span>
-      </div>
-    </motion.header>
   );
 }
 

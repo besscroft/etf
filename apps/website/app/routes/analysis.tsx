@@ -8,7 +8,6 @@ import { Button } from "~/components/ui/button";
 import { FadeIn } from "~/components/motion";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  ArrowLeft,
   ArrowUp,
   BarChart3,
   Search,
@@ -28,6 +27,7 @@ import {
 import { getAllQDIIFundData, getFundDetailData, type FundDetailData } from "~/lib/market-data";
 import { DURATION, EASING } from "~/lib/motion";
 import { ShareExport } from "~/components/share-export";
+import { AppHeader } from "~/components/app-header";
 
 export function meta() {
   return [
@@ -76,28 +76,7 @@ export default function Analysis() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* 顶部导航 */}
-      <motion.header
-        className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm"
-        initial={{ y: -20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
-      >
-        <div className="container mx-auto flex max-w-4xl items-center gap-3 px-3 py-3 sm:px-4">
-          <Link to="/">
-            <Button variant="ghost" size="icon-lg" aria-label="返回首页">
-              <ArrowLeft className="size-5" />
-            </Button>
-          </Link>
-          <BarChart3 className="size-5 text-primary" />
-          <Link to="/" className="text-lg font-semibold tracking-tight hover:underline">
-            ETFVoid
-          </Link>
-          <span className="text-muted-foreground">/</span>
-          <span className="font-medium">基金分析</span>
-        </div>
-      </motion.header>
-
+      <AppHeader currentLabel="基金分析" />
       <main className="container mx-auto max-w-4xl px-3 py-6 sm:px-4">
         {/* 搜索选择基金 - 桌面端内联下拉 */}
         <section className="mb-6">

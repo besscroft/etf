@@ -9,7 +9,6 @@ import {
   StaggerContainer,
   StaggerItem,
   MotionCard,
-  MotionButton,
   AnimatedCounter,
 } from "~/components/motion";
 import { motion, AnimatePresence } from "motion/react";
@@ -20,7 +19,6 @@ import {
   Activity,
   Gauge,
   LineChart,
-  Menu,
   X,
   TrendingUp,
   Plus,
@@ -30,8 +28,9 @@ import {
 } from "lucide-react";
 import { getMarketData, type MarketData } from "~/lib/market-data";
 import { cn } from "~/lib/utils";
-import { useState, useMemo, useEffect, useRef } from "react";
-import { useMotionConfig, DURATION, EASING, DISTANCE } from "~/lib/motion";
+import { useState, useMemo } from "react";
+import { useMotionConfig, DURATION, EASING } from "~/lib/motion";
+import { AppHeader } from "~/components/app-header";
 
 export function meta(_args: Route.MetaArgs) {
   return [
@@ -50,14 +49,10 @@ export async function loader() {
 
 export default function Home() {
   const data = useLoaderData<typeof loader>();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-background">
-      <Header
-        mobileMenuOpen={mobileMenuOpen}
-        onToggleMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
-      />
+      <AppHeader enableScrollHide />
       <main className="container mx-auto max-w-6xl px-3 pb-4 sm:px-4">
         <HeroSection data={data} />
         <MarketIndicators data={data} />
@@ -67,141 +62,6 @@ export default function Home() {
       </main>
       <Footer fetchedAt={data.fetchedAt} />
     </div>
-  );
-}
-
-/* ==================== Header ==================== */
-
-function Header({
-  mobileMenuOpen,
-  onToggleMenu,
-}: {
-  mobileMenuOpen: boolean;
-  onToggleMenu: () => void;
-}) {
-  const navItems = [
-    { label: "首页", href: "/" },
-    { label: "纳指被动", href: "/nasdaq" },
-    { label: "标普500", href: "/sp500" },
-    { label: "美股主动", href: "/active" },
-    { label: "场外基金", href: "/otc-funds" },
-  ];
-
-  // 滚动方向检测：向下滚动隐藏 Header，向上滚动显示
-  const [hidden, setHidden] = useState(false);
-  const lastScrollY = useRef(0);
-  const { shouldReduceMotion } = useMotionConfig();
-
-  useEffect(() => {
-    const handleScroll = () => {
-      const currentY = window.scrollY;
-      // 顶部 60px 内始终显示，避免遮挡内容
-      if (currentY < 60) {
-        setHidden(false);
-      } else if (currentY > lastScrollY.current + 8) {
-        // 向下滚动超过 8px 触发隐藏，避免抖动
-        setHidden(true);
-      } else if (currentY < lastScrollY.current - 8) {
-        // 向上滚动超过 8px 触发显示
-        setHidden(false);
-      }
-      lastScrollY.current = currentY;
-    };
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  return (
-    <motion.header
-      className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm"
-      // 入场：从顶部滑入；滚动隐藏：向上平移自身高度
-      initial={{ y: -DISTANCE.md, opacity: 0 }}
-      animate={{
-        y: shouldReduceMotion ? 0 : hidden ? -100 : 0,
-        opacity: 1,
-      }}
-      transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
-    >
-      <div className="container mx-auto flex max-w-6xl items-center justify-between px-3 py-3 sm:px-4">
-        <motion.div
-          className="flex items-center gap-2"
-          initial={{ opacity: 0, x: -DISTANCE.xs }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.1, duration: DURATION.normal, ease: EASING.easeOut }}
-        >
-          <BarChart3 className="size-5 text-primary" />
-          <span className="text-lg font-semibold tracking-tight">ETFVoid</span>
-        </motion.div>
-
-        {/* 桌面端导航：stagger 入场 */}
-        <StaggerContainer as="nav" className="hidden items-center gap-1 md:flex" stagger={0.04}>
-          {navItems.map((item) => (
-            <StaggerItem key={item.label}>
-              <MotionButton variant="ghost" size="sm" asChild>
-                <Link to={item.href}>{item.label}</Link>
-              </MotionButton>
-            </StaggerItem>
-          ))}
-        </StaggerContainer>
-
-        {/* 移动端菜单按钮：缩放切换动画 */}
-        <MotionButton
-          variant="ghost"
-          size="icon"
-          className="md:hidden"
-          onClick={onToggleMenu}
-          aria-label="菜单"
-        >
-          <AnimatePresence mode="wait" initial={false}>
-            {mobileMenuOpen ? (
-              <motion.span
-                key="close"
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0, opacity: 0 }}
-                transition={{ duration: DURATION.fast, ease: EASING.easeInOut }}
-              >
-                <X className="size-5" />
-              </motion.span>
-            ) : (
-              <motion.span
-                key="open"
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0, opacity: 0 }}
-                transition={{ duration: DURATION.fast, ease: EASING.easeInOut }}
-              >
-                <Menu className="size-5" />
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </MotionButton>
-      </div>
-
-      {/* 移动端下拉菜单：AnimatePresence 展开动画 */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.nav
-            className="border-t bg-background px-3 py-2 md:hidden"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: DURATION.normal, ease: EASING.easeInOut }}
-            style={{ overflow: "hidden" }}
-          >
-            <StaggerContainer className="flex flex-col gap-0.5" stagger={0.05}>
-              {navItems.map((item) => (
-                <StaggerItem key={item.label}>
-                  <MotionButton variant="ghost" size="sm" className="w-full justify-start" asChild>
-                    <Link to={item.href}>{item.label}</Link>
-                  </MotionButton>
-                </StaggerItem>
-              ))}
-            </StaggerContainer>
-          </motion.nav>
-        )}
-      </AnimatePresence>
-    </motion.header>
   );
 }
 
