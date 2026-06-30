@@ -26,6 +26,7 @@ import {
   Plus,
   Check,
   Layers,
+  Wallet,
 } from "lucide-react";
 import { getMarketData, type MarketData } from "~/lib/market-data";
 import { cn } from "~/lib/utils";
@@ -83,6 +84,7 @@ function Header({
     { label: "纳指被动", href: "/nasdaq" },
     { label: "标普500", href: "/sp500" },
     { label: "美股主动", href: "/active" },
+    { label: "场外基金", href: "/otc-funds" },
   ];
 
   // 滚动方向检测：向下滚动隐藏 Header，向上滚动显示
@@ -634,6 +636,18 @@ function ToolboxSection() {
             title="QDII估值"
             description="QDII基金实时估值追踪：盘中估值、估值偏差分析、估值走势与涨跌预警"
             href="/qdii-valuation"
+          />
+        </StaggerItem>
+        <StaggerItem className="[&>div]:h-full">
+          <ToolCard
+            icon={<Wallet className="size-5" />}
+            title="场外基金"
+            description="覆盖股票型 / 混合型 / 指数型 / 债券型 / QDII / FOF 六大类场外基金，支持多只对比与单只详情"
+            href="/otc-funds"
+            quickLinks={[
+              { label: "对比", href: "/otc-funds" },
+              { label: "详情", href: "/otc-fund" },
+            ]}
           />
         </StaggerItem>
       </StaggerContainer>

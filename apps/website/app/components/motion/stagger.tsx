@@ -71,7 +71,7 @@ export const StaggerContainer = forwardRef<HTMLDivElement, StaggerContainerProps
           }
         : createStaggerContainer(stagger, delayChildren));
 
-    const MotionComp = as ? motion(as as ElementType) : motion.div;
+    const MotionComp = as ? motion.create(as as ElementType) : motion.div;
 
     const animationProps = inView
       ? {
@@ -123,7 +123,7 @@ export const StaggerItem = forwardRef<HTMLDivElement, StaggerItemProps>(function
         }
       : variantMap[variant]);
 
-  const MotionComp = as ? motion(as as ElementType) : motion.div;
+  const MotionComp = as ? motion.create(as as ElementType) : motion.div;
 
   return (
     <MotionComp ref={ref} variants={variants} {...props}>

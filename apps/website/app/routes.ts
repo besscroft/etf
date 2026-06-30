@@ -6,6 +6,8 @@ export default [
   route("fund/:code", "routes/fund.$code.tsx"),
   route("cn/funds", "routes/compare.tsx"),
   route("cn/fund", "routes/analysis.tsx"),
+  route("otc-funds", "routes/otc-funds.tsx"),
+  route("otc-fund", "routes/otc-fund.tsx"),
   route("global/stable", "routes/stable.tsx"),
   route("qdii", "routes/qdii.tsx"),
   route("qdii-valuation", "routes/qdii-valuation.tsx"),

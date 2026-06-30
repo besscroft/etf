@@ -43,6 +43,10 @@ interface MobileCompareLayoutProps {
   onRemove: (code: string) => void;
   /** 置顶（移到首位，通过重排 URL 实现） */
   onPin?: (code: string) => void;
+  /** 自定义 header 标题，默认「基金对比」 */
+  title?: string;
+  /** 渲染在 header 与 Tab 之间的额外内容（如分类过滤器），可选 */
+  headerExtras?: React.ReactNode;
 }
 
 export function MobileCompareLayout({
@@ -51,6 +55,8 @@ export function MobileCompareLayout({
   onAdd,
   onRemove,
   onPin,
+  title = "基金对比",
+  headerExtras,
 }: MobileCompareLayoutProps) {
   const [activeTab, setActiveTab] = useState<CompareTab>("metrics");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -71,7 +77,7 @@ export function MobileCompareLayout({
             </Button>
           </Link>
           <BarChart3 className="size-4 text-primary" />
-          <span className="text-sm font-semibold">基金对比</span>
+          <span className="text-sm font-semibold">{title}</span>
           <span className="ml-auto text-xs text-muted-foreground">
             {funds.length}/{MAX_COMPARE}
           </span>
@@ -84,6 +90,7 @@ export function MobileCompareLayout({
           <>
             {/* Tab 切换栏 */}
             <div className="sticky top-12 z-30 border-b bg-background/95 backdrop-blur-sm">
+              {headerExtras && <div className="border-b px-2 py-1.5">{headerExtras}</div>}
               <div className="flex">
                 {COMPARE_TABS.map((tab) => (
                   <button

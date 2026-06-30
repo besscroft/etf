@@ -85,7 +85,7 @@ export const FadeIn = forwardRef<HTMLDivElement, FadeInProps>(function FadeIn(
         }
       : variants;
 
-  const MotionComp = as ? motion(as as ElementType) : motion.div;
+  const MotionComp = as ? motion.create(as as ElementType) : motion.div;
 
   const animationProps = inView
     ? {

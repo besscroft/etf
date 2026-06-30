@@ -1645,6 +1645,153 @@ export async function getAllQDIIFundData(): Promise<QDIIFundData[]> {
   return [...tagNasdaq, ...tagSp500, ...tagActive];
 }
 
+// ==================== 全量场外基金（覆盖股票/混合/指数/债券/QDII/FOF） ====================
+
+/** 场外基金分类 */
+export type OTCCategory = "stock" | "hybrid" | "index" | "bond" | "qdii" | "fof";
+
+/** 场外基金分类标签（中文显示） */
+export const OTC_CATEGORY_LABELS: Record<OTCCategory, string> = {
+  stock: "股票型",
+  hybrid: "混合型",
+  index: "指数型",
+  bond: "债券型",
+  qdii: "QDII",
+  fof: "FOF",
+};
+
+/** 场外基金分类顺序（用于过滤器和展示） */
+export const OTC_CATEGORY_ORDER: OTCCategory[] = [
+  "stock",
+  "hybrid",
+  "index",
+  "bond",
+  "qdii",
+  "fof",
+];
+
+/** 带分类的场外基金数据 */
+export interface OTCClassifiedFundData extends OTCFundData {
+  category: OTCCategory;
+  categoryLabel: string;
+}
+
+/**
+ * 股票型场外基金代码列表
+ * 来源：参考天天基金"股票型"排行近 1 年收益 + 规模双排序的 top 精选
+ */
+const STOCK_OTC_CODES = [
+  "005827", // 易方达蓝筹精选混合
+  "161725", // 招商中证白酒指数
+  "004997", // 广发高端制造股票A
+  "001513", // 易方达信息产业混合
+  "161038", // 富国生物医药科技混合
+  "006228", // 南方信息创新混合
+  "002083", // 新华泛资源优势混合
+  "001717", // 工银瑞信前沿医疗股票A
+  "161039", // 富国先进制造混合
+  "003834", // 华夏能源革新股票A
+  "005669", // 前海开源公用事业股票
+  "006228", // 南方信息创新混合
+  "008099", // 东方阿尔法优势产业混合A
+  "002952", // 汇添富医药保健混合A
+  "000831", // 工银瑞信医疗保健行业股票
+];
+
+/**
+ * 混合型场外基金代码列表
+ * 来源：参考天天基金"混合型"排行精选
+ */
+const HYBRID_OTC_CODES = [
+  "005827", // 易方达蓝筹精选混合
+  "260108", // 景顺长城新兴成长混合
+  "000083", // 汇添富消费行业混合
+  "161005", // 富国天惠成长混合(LOF)A
+  "519697", // 交银优势行业混合
+  "162605", // 景顺长城鼎益混合(LOF)
+  "000190", // 中银新回报混合A
+  "002011", // 华夏红利混合
+  "161606", // 融通行业景气混合A
+  "000751", // 嘉实增长混合
+  "519126", // 浦银安盛先进制造混合A
+  "002083", // 新华泛资源优势混合
+];
+
+/**
+ * 指数型场外基金代码列表
+ * 来源：参考天天基金"指数型"排行精选（含宽基、行业、主题）
+ */
+const INDEX_OTC_CODES = [
+  "161725", // 招商中证白酒指数
+  "110011", // 易方达中小盘混合（指数混合型，归类为指数）
+  "510310", // 易方达沪深300ETF
+  "161017", // 富国中证500指数(LOF)A
+  "110020", // 易方达沪深300ETF联接A
+  "050002", // 博时沪深300指数A
+  "100038", // 富国沪深300指数增强A
+  "161227", // 易方达上证50指数(LOF)A
+  "163407", // 兴全沪深300指数增强A
+  "519671", // 银河沪深300价值指数A
+  "000311", // 景顺长城沪深300指数增强A
+];
+
+/**
+ * 债券型场外基金代码列表
+ * 来源：参考天天基金"债券型"排行精选
+ */
+const BOND_OTC_CODES = [
+  "002351", // 易方达裕丰回报债券A
+  "000171", // 易方达裕丰回报债券
+  "110017", // 易方达增强回报债券A
+  "161716", // 招商双债增强债券C
+  "519060", // 广发纯债债券A
+  "161614", // 融通岁岁添利定期开放债券A
+  "000032", // 易方达信用债债券A
+  "485111", // 工银瑞信双利债券A
+  "110027", // 易方达安心回馈混合（偏债混合）
+  "040003", // 华安现金富利货币B（偏债型稳健品种）
+];
+
+/**
+ * FOF 基金代码列表
+ * 来源：参考天天基金"FOF"排行精选
+ */
+const FOF_OTC_CODES = [
+  "501210", // 交银施罗德智选星光一年封闭运作混合(FOF-LOF)A
+  "009372", // 浦银安盛嘉和稳健一年持有期混合(FOF)A
+  "011752", // 广发核心优选六个月持有期混合(FOF)A
+  "009213", // 易方达如意安泰一年持有期混合(FOF)A
+  "006507", // 前海开源裕泽定期开放混合(FOF)
+  "008145", // 兴全优选进取三个月持有期混合(FOF)A
+];
+
+/** 分类与代码常量映射表（供 getAllOTCFundData 内部使用） */
+const OTC_CATEGORY_CODE_MAP: Array<{ category: OTCCategory; codes: string[] }> = [
+  { category: "stock", codes: STOCK_OTC_CODES },
+  { category: "hybrid", codes: HYBRID_OTC_CODES },
+  { category: "index", codes: INDEX_OTC_CODES },
+  { category: "bond", codes: BOND_OTC_CODES },
+  { category: "qdii", codes: [...NASDAQ_100_OTC_CODES, ...SP500_OTC_CODES, ...ACTIVE_US_CODES] },
+  { category: "fof", codes: FOF_OTC_CODES },
+];
+
+/**
+ * 获取全量场外基金数据（覆盖股票/混合/指数/债券/QDII/FOF 六大分类）
+ * 与 getAllQDIIFundData() 解耦：QDII 在此处作为"qdii"分类的一个子集
+ * 复用 getOTCFundData() 的 batch + 缓存 + 降级链路
+ */
+export async function getAllOTCFundData(): Promise<OTCClassifiedFundData[]> {
+  // 并行拉取 6 个分类子集
+  const grouped = await Promise.all(
+    OTC_CATEGORY_CODE_MAP.map(async ({ category, codes }) => {
+      const funds = await getOTCFundData(codes);
+      const label = OTC_CATEGORY_LABELS[category];
+      return funds.map((f) => ({ ...f, category, categoryLabel: label }));
+    }),
+  );
+  return grouped.flat();
+}
+
 // ==================== 基金代码验证/搜索 ====================
 
 /** 基金搜索结果项 */
