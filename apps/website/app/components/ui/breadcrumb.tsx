@@ -26,10 +26,7 @@ export function Breadcrumb({ items, className = "mb-4 text-sm" }: BreadcrumbProp
           return (
             <li key={`${idx}-${item.name}`} className="flex items-center gap-1">
               {idx > 0 && (
-                <ChevronRight
-                  className="size-3.5 shrink-0 opacity-50"
-                  aria-hidden="true"
-                />
+                <ChevronRight className="size-3.5 shrink-0 opacity-50" aria-hidden="true" />
               )}
               {isLast || !item.path ? (
                 <span
@@ -39,10 +36,7 @@ export function Breadcrumb({ items, className = "mb-4 text-sm" }: BreadcrumbProp
                   {item.name}
                 </span>
               ) : (
-                <Link
-                  to={item.path}
-                  className="transition-colors hover:text-foreground"
-                >
+                <Link to={item.path} className="transition-colors hover:text-foreground">
                   {item.name}
                 </Link>
               )}

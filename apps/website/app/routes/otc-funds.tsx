@@ -1,7 +1,7 @@
 import type { Route } from "./+types/otc-funds";
-import { useLoaderData, useSearchParams } from "react-router";
+import { Await, useLoaderData, useSearchParams } from "react-router";
 import { AppLink as Link } from "~/components/ui/link";
-import { useState, useMemo, useCallback } from "react";
+import { Suspense, useState, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { FadeIn } from "~/components/motion";
@@ -31,6 +31,11 @@ import { useIsMobile } from "~/hooks/use-media-query";
 import { MobileCompareLayout } from "~/components/compare-mobile";
 import { COMPARE_COLORS, MAX_COMPARE } from "~/components/compare-mobile/constants";
 import { AppHeader } from "~/components/app-header";
+import {
+  FundCompareGridSkeleton,
+  MobileCompareLayoutSkeleton,
+  SelectedBadgesSkeleton,
+} from "~/components/ui/skeletons";
 
 export function meta() {
   return buildMeta({
@@ -49,17 +54,18 @@ export async function loader({ request }: Route.LoaderArgs) {
     .map((c) => c.trim())
     .filter(Boolean);
 
-  // 并行获取全量场外基金列表和已选基金详情
-  const [fundList, fundDetails] = await Promise.all([
-    getAllOTCFundData(),
-    codes.length > 0 ? getFundCompareData(codes) : Promise.resolve([]),
-  ]);
-
-  return { fundList, fundDetails };
+  // 返回未 await 的 Promise：搜索下拉、已选标签、对比主体各自流式进入。
+  return {
+    fundList: getAllOTCFundData(),
+    fundDetails:
+      codes.length > 0
+        ? getFundCompareData(codes)
+        : Promise.resolve([] as Array<FundDetailData & { error?: string }>),
+  };
 }
 
 export default function OTCFunds() {
-  const { fundList, fundDetails: initialDetails } = useLoaderData<typeof loader>();
+  const { fundList, fundDetails } = useLoaderData<typeof loader>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const isMobile = useIsMobile();
@@ -67,8 +73,15 @@ export default function OTCFunds() {
   // 分类过滤器（URL 同步）
   const activeCategory = (searchParams.get("category") ?? "all") as OTCCategory | "all";
 
-  // 已选基金代码列表
-  const selectedCodes = useMemo(() => initialDetails.map((f) => f.code), [initialDetails]);
+  // 已选基金代码（来自 URL，不依赖数据）
+  const selectedCodes = useMemo(
+    () =>
+      (searchParams.get("funds") ?? "")
+        .split(",")
+        .map((c) => c.trim())
+        .filter(Boolean),
+    [searchParams],
+  );
 
   // 切换分类
   const setCategory = useCallback(
@@ -123,35 +136,30 @@ export default function OTCFunds() {
     [selectedCodes, searchParams, setSearchParams],
   );
 
-  // 当前分类下的基金列表（用于搜索）
-  const visibleFundList = useMemo(() => {
-    if (activeCategory === "all") return fundList;
-    return fundList.filter((f) => f.category === activeCategory);
-  }, [fundList, activeCategory]);
-
-  // 搜索过滤
-  const filteredFunds = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-    const q = searchQuery.trim().toLowerCase();
-    return visibleFundList.filter(
-      (f) =>
-        !selectedCodes.includes(f.code) &&
-        (f.code.toLowerCase().includes(q) || f.name.toLowerCase().includes(q)),
-    );
-  }, [visibleFundList, searchQuery, selectedCodes]);
-
-  // 移动端：直接渲染移动端布局
+  // 移动端：整体包装（布局依赖 fundList + fundDetails）
   if (isMobile) {
     return (
-      <MobileCompareLayout
-        title="场外基金对比"
-        funds={initialDetails}
-        fundList={visibleFundList.map(({ code, name }) => ({ code, name }))}
-        onAdd={addFund}
-        onRemove={removeFund}
-        onPin={pinFund}
-        headerExtras={<CategoryChips active={activeCategory} onChange={setCategory} compact />}
-      />
+      <Suspense fallback={<MobileCompareLayoutSkeleton />}>
+        <Await resolve={Promise.all([fundList, fundDetails])}>
+          {([list, details]) => {
+            const visibleFundList =
+              activeCategory === "all" ? list : list.filter((f) => f.category === activeCategory);
+            return (
+              <MobileCompareLayout
+                title="场外基金对比"
+                funds={details}
+                fundList={visibleFundList.map(({ code, name }) => ({ code, name }))}
+                onAdd={addFund}
+                onRemove={removeFund}
+                onPin={pinFund}
+                headerExtras={
+                  <CategoryChips active={activeCategory} onChange={setCategory} compact />
+                }
+              />
+            );
+          }}
+        </Await>
+      </Suspense>
     );
   }
 
@@ -191,65 +199,91 @@ export default function OTCFunds() {
             )}
           </div>
 
-          {/* 搜索结果下拉 */}
-          {filteredFunds.length > 0 && (
-            <div className="mt-1 max-h-60 overflow-y-auto rounded-md border bg-background shadow-md">
-              {filteredFunds.slice(0, 20).map((f) => (
-                <button
-                  key={f.code}
-                  onClick={() => {
-                    addFund(f.code);
-                    setSearchQuery("");
-                  }}
-                  className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-muted transition-colors"
-                >
-                  <span className="min-w-0 flex-1 truncate">
-                    <span className="font-mono text-xs text-muted-foreground">{f.code}</span>
-                    <span className="ml-2">{f.name}</span>
-                  </span>
-                  <span className="ml-2 flex shrink-0 items-center gap-1.5">
-                    <Badge variant="secondary" className="text-[10px]">
-                      {f.categoryLabel}
-                    </Badge>
-                    <Plus className="size-4 text-muted-foreground" />
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
+          {/* 搜索结果下拉：依赖 fundList，未到时隐藏（输入时不会误显示） */}
+          <Suspense fallback={null}>
+            <Await resolve={fundList}>
+              {(list) => {
+                const q = searchQuery.trim().toLowerCase();
+                if (!q) return null;
+                const visibleFundList =
+                  activeCategory === "all"
+                    ? list
+                    : list.filter((f) => f.category === activeCategory);
+                const filtered = visibleFundList.filter(
+                  (f) =>
+                    !selectedCodes.includes(f.code) &&
+                    (f.code.toLowerCase().includes(q) || f.name.toLowerCase().includes(q)),
+                );
+                if (filtered.length === 0) return null;
+                return (
+                  <div className="mt-1 max-h-60 overflow-y-auto rounded-md border bg-background shadow-md">
+                    {filtered.slice(0, 20).map((f) => (
+                      <button
+                        key={f.code}
+                        onClick={() => {
+                          addFund(f.code);
+                          setSearchQuery("");
+                        }}
+                        className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-muted transition-colors"
+                      >
+                        <span className="min-w-0 flex-1 truncate">
+                          <span className="font-mono text-xs text-muted-foreground">{f.code}</span>
+                          <span className="ml-2">{f.name}</span>
+                        </span>
+                        <span className="ml-2 flex shrink-0 items-center gap-1.5">
+                          <Badge variant="secondary" className="text-[10px]">
+                            {f.categoryLabel}
+                          </Badge>
+                          <Plus className="size-4 text-muted-foreground" />
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              }}
+            </Await>
+          </Suspense>
 
-          {/* 已选基金标签 */}
+          {/* 已选基金标签：依赖 fundDetails 取名称，未到时显示骨架 */}
           {selectedCodes.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {initialDetails.map((fund, idx) => (
-                <Badge
-                  key={fund.code}
-                  variant="secondary"
-                  className="gap-1.5 px-3 py-1.5 text-sm"
-                  style={{
-                    borderColor: COMPARE_COLORS[idx % COMPARE_COLORS.length].line,
-                    borderWidth: 1.5,
-                  }}
-                >
-                  <span
-                    className="inline-block size-2.5 rounded-full"
-                    style={{ backgroundColor: COMPARE_COLORS[idx % COMPARE_COLORS.length].line }}
-                  />
-                  {fund.name}
-                  <button
-                    onClick={() => removeFund(fund.code)}
-                    className="ml-0.5 hover:text-destructive"
-                  >
-                    <X className="size-3" />
-                  </button>
-                </Badge>
-              ))}
-              {selectedCodes.length < MAX_COMPARE && (
-                <span className="flex items-center text-xs text-muted-foreground">
-                  还可添加 {MAX_COMPARE - selectedCodes.length} 只
-                </span>
-              )}
-            </div>
+            <Suspense fallback={<SelectedBadgesSkeleton count={selectedCodes.length} />}>
+              <Await resolve={fundDetails}>
+                {(details) => (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {details.map((fund, idx) => (
+                      <Badge
+                        key={fund.code}
+                        variant="secondary"
+                        className="gap-1.5 px-3 py-1.5 text-sm"
+                        style={{
+                          borderColor: COMPARE_COLORS[idx % COMPARE_COLORS.length].line,
+                          borderWidth: 1.5,
+                        }}
+                      >
+                        <span
+                          className="inline-block size-2.5 rounded-full"
+                          style={{
+                            backgroundColor: COMPARE_COLORS[idx % COMPARE_COLORS.length].line,
+                          }}
+                        />
+                        {fund.name}
+                        <button
+                          onClick={() => removeFund(fund.code)}
+                          className="ml-0.5 hover:text-destructive"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                    {selectedCodes.length < MAX_COMPARE && (
+                      <span className="flex items-center text-xs text-muted-foreground">
+                        还可添加 {MAX_COMPARE - selectedCodes.length} 只
+                      </span>
+                    )}
+                  </div>
+                )}
+              </Await>
+            </Suspense>
           )}
 
           {selectedCodes.length === 0 && (
@@ -263,18 +297,28 @@ export default function OTCFunds() {
 
         {/* 对比内容（可导出区域） */}
         <div className="flex items-center justify-end mb-3">
-          {initialDetails.length >= 2 && (
-            <ShareExport
-              module="fund-compare"
-              data={{ funds: initialDetails }}
-              fileName="otc-fund-compare"
-            />
+          {selectedCodes.length >= 2 && (
+            <Suspense fallback={null}>
+              <Await resolve={fundDetails}>
+                {(details) => (
+                  <ShareExport
+                    module="fund-compare"
+                    data={{ funds: details }}
+                    fileName="otc-fund-compare"
+                  />
+                )}
+              </Await>
+            </Suspense>
           )}
         </div>
         <div className="bg-background p-2">
-          {initialDetails.length >= 2 ? (
-            <CompareContent funds={initialDetails} onRemove={removeFund} />
-          ) : initialDetails.length === 1 ? (
+          {selectedCodes.length >= 2 ? (
+            <Suspense fallback={<FundCompareGridSkeleton count={selectedCodes.length} />}>
+              <Await resolve={fundDetails}>
+                {(details) => <CompareContent funds={details} onRemove={removeFund} />}
+              </Await>
+            </Suspense>
+          ) : selectedCodes.length === 1 ? (
             <p className="text-center text-sm text-muted-foreground">
               请再选择至少 1 只基金开始对比
             </p>

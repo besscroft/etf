@@ -1,6 +1,7 @@
+import type { Route } from "./+types/qdii-valuation";
 import { useLoaderData } from "react-router";
 import { AppLink as Link } from "~/components/ui/link";
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -34,8 +35,10 @@ import {
 import { DURATION, EASING } from "~/lib/motion";
 import { ShareExport } from "~/components/share-export";
 import { AppHeader } from "~/components/app-header";
+import { AsyncSection } from "~/components/ui/async-section";
+import { FundListTableSkeleton } from "~/components/ui/skeletons";
 
-export function meta() {
+export function meta(_args: Route.MetaArgs) {
   return buildMeta({
     title: "QDII 基金估值",
     description: "QDII基金实时估值追踪：盘中估值、估值偏差分析、估值走势与预警",
@@ -44,8 +47,11 @@ export function meta() {
 }
 
 export async function loader() {
-  const funds = await getQDIIValuationData();
-  return { funds, fetchedAt: new Date().toISOString() };
+  // 估值数据来自多源（每只基金一个 http 请求），整页依赖这个 list，defer 流式进入
+  return {
+    funds: getQDIIValuationData(),
+    fetchedAt: Promise.resolve(new Date().toISOString()),
+  };
 }
 
 type SortField =
@@ -101,8 +107,36 @@ function SessionBadge({ session }: { session: MarketSession }) {
   );
 }
 
-export default function QDIIValuation() {
+export default function QDIIValuation(_args: Route.ComponentProps) {
   const { funds, fetchedAt } = useLoaderData<typeof loader>();
+  return (
+    <div className="min-h-screen bg-background">
+      <AppHeader currentLabel="QDII 估值" />
+      <main className="container mx-auto max-w-6xl px-3 py-6 sm:px-4">
+        <AsyncSection resolve={funds} fallback={<FundListTableSkeleton />}>
+          {(data) => (
+            <AsyncSection resolve={fetchedAt} fallback={null}>
+              {(fa) => (
+                <QDIIValuationContent
+                  funds={data as QDIIValuationData[]}
+                  fetchedAt={fa as string}
+                />
+              )}
+            </AsyncSection>
+          )}
+        </AsyncSection>
+      </main>
+    </div>
+  );
+}
+
+function QDIIValuationContent({
+  funds,
+  fetchedAt,
+}: {
+  funds: QDIIValuationData[];
+  fetchedAt: string;
+}) {
   const [sortField, setSortField] = useState<SortField>("estimatedChange");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [filterCategory, setFilterCategory] = useState<FilterCategory>("all");
@@ -156,6 +190,7 @@ export default function QDIIValuation() {
     }, 60_000);
 
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [funds]);
 
   const handleRefresh = useCallback(async () => {
@@ -182,7 +217,8 @@ export default function QDIIValuation() {
     }
   };
 
-  const filtered = useMemo(() => {
+  // 不使用 useMemo（funds 列表数量有限，filter+sort 计算量可忽略）
+  const filtered = (() => {
     let list = [...funds];
 
     // 搜索过滤
@@ -242,7 +278,7 @@ export default function QDIIValuation() {
       return sortDir === "asc" ? (va as number) - (vb as number) : (vb as number) - (va as number);
     });
     return list;
-  }, [funds, filterCategory, sortField, sortDir, searchQuery]);
+  })();
 
   const session = funds[0]?.marketSession ?? "after";
   const nasdaqCount = funds.filter((f) => f.category === "nasdaq100").length;
@@ -289,395 +325,388 @@ export default function QDIIValuation() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <AppHeader currentLabel="QDII 估值" />
-      <main className="container mx-auto max-w-6xl px-3 py-6 sm:px-4">
-        {/* 标题区 */}
-        <FadeIn className="mb-6" delay={0.1}>
-          <div className="flex items-end justify-between">
-            <div>
-              <h1 className="mb-2 text-xl font-bold tracking-tight md:text-2xl">QDII 基金估值</h1>
-              <div className="flex items-center gap-3">
-                <p className="text-sm text-muted-foreground">
-                  {funds.length}只 · 更新：{fetchedAt.slice(11, 16)}
-                </p>
-                <SessionBadge session={session} />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                数据来源：天天基金网 · 估值仅供参考，以实际净值为准
+    <>
+      {/* 标题区 */}
+      <FadeIn className="mb-6" delay={0.1}>
+        <div className="flex items-end justify-between">
+          <div>
+            <h1 className="mb-2 text-xl font-bold tracking-tight md:text-2xl">QDII 基金估值</h1>
+            <div className="flex items-center gap-3">
+              <p className="text-sm text-muted-foreground">
+                {funds.length}只 · 更新：{fetchedAt.slice(11, 16)}
               </p>
+              <SessionBadge session={session} />
             </div>
-            <div className="flex items-center gap-2">
-              {/* 预警按钮 */}
-              <div className="relative">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowAlertPanel(!showAlertPanel)}
-                  className="relative"
-                >
-                  {triggeredAlerts.size > 0 ? (
-                    <BellRing className="mr-1 size-4 text-amber-500" />
-                  ) : (
-                    <Bell className="mr-1 size-4" />
-                  )}
-                  预警
-                  {alerts.length > 0 && (
-                    <span className="ml-1 rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">
-                      {alerts.length}
-                    </span>
-                  )}
-                </Button>
-              </div>
-              {/* 刷新按钮 */}
-              <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
-                <RefreshCw className={`mr-1 size-4 ${refreshing ? "animate-spin" : ""}`} />
-                刷新
-              </Button>
-              {/* 导出图片 */}
-              <ShareExport
-                module="valuation"
-                data={{ funds, session, fetchedAt }}
-                fileName="qdii-valuation"
-              />
-            </div>
+            <p className="text-xs text-muted-foreground">
+              数据来源：天天基金网 · 估值仅供参考，以实际净值为准
+            </p>
           </div>
-        </FadeIn>
-
-        {/* 预警面板 */}
-        <AnimatePresence>
-          {showAlertPanel && (
-            <motion.div
-              key="alert-panel"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
-              className="mb-4 overflow-hidden"
-            >
-              <Card className="border-amber-500/30 bg-amber-500/5">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Bell className="size-4 text-amber-500" />
-                    估值预警设置
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {alerts.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      暂无预警，点击表格中的铃铛图标为基金添加预警
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {alerts.map((alert) => {
-                        const fund = funds.find((f) => f.code === alert.code);
-                        const isTriggered = triggeredAlerts.has(alert.code);
-                        return (
-                          <div
-                            key={alert.code}
-                            className={`flex items-center justify-between rounded-md border p-2 ${
-                              isTriggered ? "border-amber-500 bg-amber-500/10" : ""
-                            }`}
-                          >
-                            <div className="flex items-center gap-2">
-                              {isTriggered && <AlertTriangle className="size-4 text-amber-500" />}
-                              <span className="text-sm font-medium">{alert.name}</span>
-                              <span className="font-mono text-xs text-muted-foreground">
-                                {alert.code}
-                              </span>
-                              <Badge variant="secondary" className="text-xs">
-                                {alert.direction === "up"
-                                  ? "涨≥"
-                                  : alert.direction === "down"
-                                    ? "跌≥"
-                                    : "波动≥"}
-                                {alert.threshold}%
-                              </Badge>
-                              {isTriggered && (
-                                <Badge variant="destructive" className="text-xs">
-                                  已触发
-                                </Badge>
-                              )}
-                              {fund && !fund.error && (
-                                <span
-                                  className={`text-xs font-medium ${
-                                    fund.estimatedChange > 0
-                                      ? "text-red-500"
-                                      : fund.estimatedChange < 0
-                                        ? "text-emerald-500"
-                                        : ""
-                                  }`}
-                                >
-                                  当前: {fund.estimatedChange > 0 ? "+" : ""}
-                                  {fund.estimatedChange.toFixed(2)}%
-                                </span>
-                              )}
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeAlert(alert.code)}
-                            >
-                              <X className="size-4" />
-                            </Button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* 添加预警弹窗 */}
-        <AnimatePresence>
-          {alertFund && (
-            <motion.div
-              key="alert-modal"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-              onClick={() => setAlertFund(null)}
-            >
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
-                className="mx-4 w-full max-w-sm rounded-lg border bg-background p-4 shadow-lg"
-                onClick={(e) => e.stopPropagation()}
+          <div className="flex items-center gap-2">
+            {/* 预警按钮 */}
+            <div className="relative">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAlertPanel(!showAlertPanel)}
+                className="relative"
               >
-                <h3 className="mb-3 text-sm font-semibold">设置预警 - {alertFund.name}</h3>
-                <div className="mb-3">
-                  <label className="mb-1 block text-xs text-muted-foreground">涨跌幅阈值(%)</label>
-                  <input
-                    type="number"
-                    value={alertThreshold}
-                    onChange={(e) => setAlertThreshold(parseFloat(e.target.value) || 1)}
-                    min={0.1}
-                    max={20}
-                    step={0.1}
-                    className="h-8 w-full rounded-md border bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-                <div className="mb-4">
-                  <label className="mb-1 block text-xs text-muted-foreground">触发方向</label>
-                  <div className="flex gap-2">
-                    {[
-                      { key: "up" as const, label: "上涨时" },
-                      { key: "down" as const, label: "下跌时" },
-                      { key: "both" as const, label: "双向" },
-                    ].map((opt) => (
-                      <button
-                        key={opt.key}
-                        onClick={() => setAlertDirection(opt.key)}
-                        className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                          alertDirection === opt.key
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-muted text-muted-foreground hover:bg-muted/80"
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setAlertFund(null)}>
-                    取消
-                  </Button>
-                  <Button size="sm" onClick={() => addAlert(alertFund)}>
-                    确认
-                  </Button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* 数据获取失败提示 */}
-        {errorCount > 0 && (
-          <FadeIn className="mb-4" delay={0.12}>
-            <Card className="border-amber-500/30 bg-amber-500/5">
-              <CardContent className="flex items-center gap-3 px-4 py-3">
-                <AlertTriangle className="size-4 text-amber-500" />
-                <span className="text-sm">{errorCount} 只基金数据获取失败，已自动降级显示</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    _setRetryCount((c) => c + 1);
-                    void handleRefresh();
-                  }}
-                >
-                  重试
-                </Button>
-              </CardContent>
-            </Card>
-          </FadeIn>
-        )}
-
-        {/* 搜索栏 */}
-        <FadeIn className="mb-4" delay={0.12}>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="搜索基金代码或名称..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-9 w-full rounded-md border bg-background pl-9 pr-3 text-sm outline-none focus:ring-1 focus:ring-primary"
+                {triggeredAlerts.size > 0 ? (
+                  <BellRing className="mr-1 size-4 text-amber-500" />
+                ) : (
+                  <Bell className="mr-1 size-4" />
+                )}
+                预警
+                {alerts.length > 0 && (
+                  <span className="ml-1 rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">
+                    {alerts.length}
+                  </span>
+                )}
+              </Button>
+            </div>
+            {/* 刷新按钮 */}
+            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+              <RefreshCw className={`mr-1 size-4 ${refreshing ? "animate-spin" : ""}`} />
+              刷新
+            </Button>
+            {/* 导出图片 */}
+            <ShareExport
+              module="valuation"
+              data={{ funds, session, fetchedAt }}
+              fileName="qdii-valuation"
             />
           </div>
-        </FadeIn>
+        </div>
+      </FadeIn>
 
-        {/* 分类筛选 */}
-        <FadeIn className="mb-4 flex items-center gap-2" delay={0.15}>
-          <Filter className="size-4 text-muted-foreground" />
-          <div className="flex flex-wrap gap-1.5">
-            {[
-              { key: "all" as const, label: `全部 (${funds.length})` },
-              { key: "nasdaq100" as const, label: `纳指100 (${nasdaqCount})` },
-              { key: "sp500" as const, label: `标普500 (${sp500Count})` },
-              { key: "active" as const, label: `主动型 (${activeCount})` },
-            ].map((opt) => (
-              <motion.button
-                key={opt.key}
-                onClick={() => setFilterCategory(opt.key)}
-                whileTap={{ scale: 0.95 }}
-                transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  filterCategory === opt.key
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                }`}
-              >
-                {opt.label}
-              </motion.button>
-            ))}
-          </div>
-        </FadeIn>
+      {/* 预警面板 */}
+      <AnimatePresence>
+        {showAlertPanel && (
+          <motion.div
+            key="alert-panel"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+            className="mb-4 overflow-hidden"
+          >
+            <Card className="border-amber-500/30 bg-amber-500/5">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <Bell className="size-4 text-amber-500" />
+                  估值预警设置
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {alerts.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    暂无预警，点击表格中的铃铛图标为基金添加预警
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {alerts.map((alert) => {
+                      const fund = funds.find((f) => f.code === alert.code);
+                      const isTriggered = triggeredAlerts.has(alert.code);
+                      return (
+                        <div
+                          key={alert.code}
+                          className={`flex items-center justify-between rounded-md border p-2 ${
+                            isTriggered ? "border-amber-500 bg-amber-500/10" : ""
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            {isTriggered && <AlertTriangle className="size-4 text-amber-500" />}
+                            <span className="text-sm font-medium">{alert.name}</span>
+                            <span className="font-mono text-xs text-muted-foreground">
+                              {alert.code}
+                            </span>
+                            <Badge variant="secondary" className="text-xs">
+                              {alert.direction === "up"
+                                ? "涨≥"
+                                : alert.direction === "down"
+                                  ? "跌≥"
+                                  : "波动≥"}
+                              {alert.threshold}%
+                            </Badge>
+                            {isTriggered && (
+                              <Badge variant="destructive" className="text-xs">
+                                已触发
+                              </Badge>
+                            )}
+                            {fund && !fund.error && (
+                              <span
+                                className={`text-xs font-medium ${
+                                  fund.estimatedChange > 0
+                                    ? "text-red-500"
+                                    : fund.estimatedChange < 0
+                                      ? "text-emerald-500"
+                                      : ""
+                                }`}
+                              >
+                                当前: {fund.estimatedChange > 0 ? "+" : ""}
+                                {fund.estimatedChange.toFixed(2)}%
+                              </span>
+                            )}
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => removeAlert(alert.code)}>
+                            <X className="size-4" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-        {/* 估值表格 */}
-        <FadeIn delay={0.2}>
-          <Card>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/30">
-                      <ThSortableCell
-                        label="代码"
-                        field="code"
-                        current={sortField}
-                        dir={sortDir}
-                        onSort={toggleSort}
-                      />
-                      <ThSortableCell
-                        label="基金名称"
-                        field="name"
-                        current={sortField}
-                        dir={sortDir}
-                        onSort={toggleSort}
-                      />
-                      <ThSortableCell
-                        label="类型"
-                        field="categoryLabel"
-                        current={sortField}
-                        dir={sortDir}
-                        onSort={toggleSort}
-                      />
-                      <ThSortableCell
-                        label="实时估值"
-                        field="estimatedNav"
-                        current={sortField}
-                        dir={sortDir}
-                        onSort={toggleSort}
-                      />
-                      <ThSortableCell
-                        label="估算涨幅"
-                        field="estimatedChange"
-                        current={sortField}
-                        dir={sortDir}
-                        onSort={toggleSort}
-                      />
-                      <ThSortableCell
-                        label="最新净值"
-                        field="actualNav"
-                        current={sortField}
-                        dir={sortDir}
-                        onSort={toggleSort}
-                      />
-                      <ThSortableCell
-                        label="估值偏差"
-                        field="deviation"
-                        current={sortField}
-                        dir={sortDir}
-                        onSort={toggleSort}
-                      />
-                      <ThSortableCell
-                        label="净值日期"
-                        field="navDate"
-                        current={sortField}
-                        dir={sortDir}
-                        onSort={toggleSort}
-                      />
-                      <ThCell>预警</ThCell>
-                      <ThCell>走势</ThCell>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map((fund) => (
-                      <ValuationRow
-                        key={fund.code}
-                        fund={fund}
-                        hasAlert={alerts.some((a) => a.code === fund.code)}
-                        isAlertTriggered={triggeredAlerts.has(fund.code)}
-                        onAddAlert={() => {
-                          setAlertFund(fund);
-                          setAlertThreshold(2);
-                          setAlertDirection("both");
-                        }}
-                        isExpanded={expandedCode === fund.code}
-                        onToggleExpand={() => toggleExpand(fund.code)}
-                        historyData={expandedCode === fund.code ? historyData : []}
-                        historyLoading={historyLoading && expandedCode === fund.code}
-                      />
-                    ))}
-                  </tbody>
-                </table>
+      {/* 添加预警弹窗 */}
+      <AnimatePresence>
+        {alertFund && (
+          <motion.div
+            key="alert-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+            onClick={() => setAlertFund(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
+              className="mx-4 w-full max-w-sm rounded-lg border bg-background p-4 shadow-lg"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="mb-3 text-sm font-semibold">设置预警 - {alertFund.name}</h3>
+              <div className="mb-3">
+                <label className="mb-1 block text-xs text-muted-foreground">涨跌幅阈值(%)</label>
+                <input
+                  type="number"
+                  value={alertThreshold}
+                  onChange={(e) => setAlertThreshold(parseFloat(e.target.value) || 1)}
+                  min={0.1}
+                  max={20}
+                  step={0.1}
+                  className="h-8 w-full rounded-md border bg-background px-2 text-sm outline-none focus:ring-1 focus:ring-primary"
+                />
               </div>
+              <div className="mb-4">
+                <label className="mb-1 block text-xs text-muted-foreground">触发方向</label>
+                <div className="flex gap-2">
+                  {[
+                    { key: "up" as const, label: "上涨时" },
+                    { key: "down" as const, label: "下跌时" },
+                    { key: "both" as const, label: "双向" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.key}
+                      onClick={() => setAlertDirection(opt.key)}
+                      className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                        alertDirection === opt.key
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground hover:bg-muted/80"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" size="sm" onClick={() => setAlertFund(null)}>
+                  取消
+                </Button>
+                <Button size="sm" onClick={() => addAlert(alertFund)}>
+                  确认
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 数据获取失败提示 */}
+      {errorCount > 0 && (
+        <FadeIn className="mb-4" delay={0.12}>
+          <Card className="border-amber-500/30 bg-amber-500/5">
+            <CardContent className="flex items-center gap-3 px-4 py-3">
+              <AlertTriangle className="size-4 text-amber-500" />
+              <span className="text-sm">{errorCount} 只基金数据获取失败，已自动降级显示</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  _setRetryCount((c) => c + 1);
+                  void handleRefresh();
+                }}
+              >
+                重试
+              </Button>
             </CardContent>
           </Card>
         </FadeIn>
+      )}
 
-        <AnimatePresence>
-          {filtered.length === 0 && (
-            <motion.div
-              key="empty"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+      {/* 搜索栏 */}
+      <FadeIn className="mb-4" delay={0.12}>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="搜索基金代码或名称..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-9 w-full rounded-md border bg-background pl-9 pr-3 text-sm outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+      </FadeIn>
+
+      {/* 分类筛选 */}
+      <FadeIn className="mb-4 flex items-center gap-2" delay={0.15}>
+        <Filter className="size-4 text-muted-foreground" />
+        <div className="flex flex-wrap gap-1.5">
+          {[
+            { key: "all" as const, label: `全部 (${funds.length})` },
+            { key: "nasdaq100" as const, label: `纳指100 (${nasdaqCount})` },
+            { key: "sp500" as const, label: `标普500 (${sp500Count})` },
+            { key: "active" as const, label: `主动型 (${activeCount})` },
+          ].map((opt) => (
+            <motion.button
+              key={opt.key}
+              onClick={() => setFilterCategory(opt.key)}
+              whileTap={{ scale: 0.95 }}
+              transition={{ duration: DURATION.fast, ease: EASING.easeOut }}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                filterCategory === opt.key
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }`}
             >
-              <Card className="mt-4 py-12">
-                <CardContent className="flex flex-col items-center gap-3 text-center">
-                  <Filter className="size-10 text-muted-foreground/40" />
-                  <p className="text-sm text-muted-foreground">没有符合条件的基金</p>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              {opt.label}
+            </motion.button>
+          ))}
+        </div>
+      </FadeIn>
 
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          估值数据仅供参考，不构成投资建议。估值基于基金持仓和指数走势估算，可能与实际净值存在偏差。
-        </p>
-      </main>
-    </div>
+      {/* 估值表格 */}
+      <FadeIn delay={0.2}>
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <ThSortableCell
+                      label="代码"
+                      field="code"
+                      current={sortField}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <ThSortableCell
+                      label="基金名称"
+                      field="name"
+                      current={sortField}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <ThSortableCell
+                      label="类型"
+                      field="categoryLabel"
+                      current={sortField}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <ThSortableCell
+                      label="实时估值"
+                      field="estimatedNav"
+                      current={sortField}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <ThSortableCell
+                      label="估算涨幅"
+                      field="estimatedChange"
+                      current={sortField}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <ThSortableCell
+                      label="最新净值"
+                      field="actualNav"
+                      current={sortField}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <ThSortableCell
+                      label="估值偏差"
+                      field="deviation"
+                      current={sortField}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <ThSortableCell
+                      label="净值日期"
+                      field="navDate"
+                      current={sortField}
+                      dir={sortDir}
+                      onSort={toggleSort}
+                    />
+                    <ThCell>预警</ThCell>
+                    <ThCell>走势</ThCell>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((fund) => (
+                    <ValuationRow
+                      key={fund.code}
+                      fund={fund}
+                      hasAlert={alerts.some((a) => a.code === fund.code)}
+                      isAlertTriggered={triggeredAlerts.has(fund.code)}
+                      onAddAlert={() => {
+                        setAlertFund(fund);
+                        setAlertThreshold(2);
+                        setAlertDirection("both");
+                      }}
+                      isExpanded={expandedCode === fund.code}
+                      onToggleExpand={() => toggleExpand(fund.code)}
+                      historyData={expandedCode === fund.code ? historyData : []}
+                      historyLoading={historyLoading && expandedCode === fund.code}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </FadeIn>
+
+      <AnimatePresence>
+        {filtered.length === 0 && (
+          <motion.div
+            key="empty"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: DURATION.normal, ease: EASING.easeOut }}
+          >
+            <Card className="mt-4 py-12">
+              <CardContent className="flex flex-col items-center gap-3 text-center">
+                <Filter className="size-10 text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">没有符合条件的基金</p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <p className="mt-6 text-center text-xs text-muted-foreground">
+        估值数据仅供参考，不构成投资建议。估值基于基金持仓和指数走势估算，可能与实际净值存在偏差。
+      </p>
+    </>
   );
 }
 

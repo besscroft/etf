@@ -376,3 +376,64 @@ export function TextBlockSkeleton({ lines = 3 }: { lines?: number }) {
     </div>
   );
 }
+
+/** 移动端基金对比骨架：顶栏 + 标签条 + 卡片占位 */
+export function MobileCompareLayoutSkeleton() {
+  return (
+    <div className="flex min-h-[100dvh] flex-col bg-background">
+      <header className="sticky top-0 z-40 h-12 border-b bg-background/80 backdrop-blur-sm">
+        <div className="flex h-full items-center gap-2 px-2">
+          <Skeleton className="size-9" />
+          <Skeleton className="h-4 w-20" />
+        </div>
+      </header>
+      {/* Chip 条 */}
+      <div className="flex gap-2 border-b p-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-7 w-24" />
+        ))}
+      </div>
+      {/* Tab 栏 */}
+      <div className="flex gap-1 border-b p-1">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-8 flex-1" />
+        ))}
+      </div>
+      {/* 主内容 */}
+      <main className="flex-1 space-y-3 p-3">
+        <Card>
+          <CardContent className="space-y-3 p-3">
+            <Skeleton className="h-4 w-1/3" />
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex items-center justify-between">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-3 w-12" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="space-y-2 p-3">
+            <Skeleton className="h-48 w-full" />
+            <div className="flex gap-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-6 w-16" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </main>
+    </div>
+  );
+}
+
+/** 已选基金标签骨架（与 Badges 同形） */
+export function SelectedBadgesSkeleton({ count = 2 }: { count?: number }) {
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {Array.from({ length: count }).map((_, i) => (
+        <Skeleton key={i} className="h-7 w-24" />
+      ))}
+    </div>
+  );
+}

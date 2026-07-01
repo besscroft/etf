@@ -1,7 +1,7 @@
 import type { Route } from "./+types/otc-fund";
-import { useLoaderData, useSearchParams } from "react-router";
+import { Await, useLoaderData, useSearchParams } from "react-router";
 import { AppLink as Link } from "~/components/ui/link";
-import { useState, useMemo, useEffect } from "react";
+import { Suspense, useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -38,6 +38,7 @@ import {
 import { DURATION, EASING } from "~/lib/motion";
 import { ShareExport } from "~/components/share-export";
 import { AppHeader } from "~/components/app-header";
+import { FundDetailPanelSkeleton } from "~/components/ui/skeletons";
 
 export function meta() {
   return buildMeta({
@@ -53,38 +54,21 @@ export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code") ?? "";
 
-  // 并行获取全量场外基金列表和指定基金详情
-  const [fundList, fundDetail] = await Promise.all([
-    getAllOTCFundData(),
-    code ? getFundDetailData(code) : Promise.resolve(null),
-  ]);
-
-  return { fundList, fundDetail };
+  // 返回未 await 的 Promise：搜索下拉 + 详情主体各自流式进入。
+  return {
+    fundList: getAllOTCFundData(),
+    fundDetail: code ? getFundDetailData(code) : Promise.resolve(null as FundDetailData | null),
+  };
 }
 
 export default function OTCFundDetail() {
-  const { fundList, fundDetail: initialDetail } = useLoaderData<typeof loader>();
+  const { fundList, fundDetail } = useLoaderData<typeof loader>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
 
   // 分类过滤（URL 同步）
   const activeCategory = (searchParams.get("category") ?? "all") as OTCCategory | "all";
-
-  // 分类下的基金列表（用于搜索）
-  const visibleFundList = useMemo(() => {
-    if (activeCategory === "all") return fundList;
-    return fundList.filter((f) => f.category === activeCategory);
-  }, [fundList, activeCategory]);
-
-  // 搜索过滤
-  const filteredFunds = useMemo(() => {
-    if (!searchQuery.trim()) return [];
-    const q = searchQuery.trim().toLowerCase();
-    return visibleFundList.filter(
-      (f) => f.code.toLowerCase().includes(q) || f.name.toLowerCase().includes(q),
-    );
-  }, [visibleFundList, searchQuery]);
 
   const setCategory = (cat: OTCCategory | "all") => {
     const newParams = new URLSearchParams(searchParams);
@@ -172,26 +156,44 @@ export default function OTCFundDetail() {
               </button>
             )}
 
-            {/* 搜索结果下拉 */}
-            {filteredFunds.length > 0 && (
-              <div className="mt-1 max-h-60 overflow-y-auto rounded-md border bg-background shadow-md">
-                {filteredFunds.slice(0, 20).map((f) => (
-                  <button
-                    key={f.code}
-                    onClick={() => selectFund(f.code)}
-                    className="flex w-full items-center justify-between px-3 py-2.5 text-sm hover:bg-muted transition-colors"
-                  >
-                    <span className="min-w-0 flex-1 truncate">
-                      <span className="font-mono text-xs text-muted-foreground">{f.code}</span>
-                      <span className="ml-2">{f.name}</span>
-                    </span>
-                    <Badge variant="secondary" className="ml-2 shrink-0 text-[10px]">
-                      {f.categoryLabel}
-                    </Badge>
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* 搜索结果下拉：依赖 fundList，未到时隐藏（用户输入时不会误显示） */}
+            <Suspense fallback={null}>
+              <Await resolve={fundList}>
+                {(list) => {
+                  const q = searchQuery.trim().toLowerCase();
+                  if (!q) return null;
+                  const visibleFundList =
+                    activeCategory === "all"
+                      ? list
+                      : list.filter((f) => f.category === activeCategory);
+                  const filtered = visibleFundList.filter(
+                    (f) => f.code.toLowerCase().includes(q) || f.name.toLowerCase().includes(q),
+                  );
+                  if (filtered.length === 0) return null;
+                  return (
+                    <div className="mt-1 max-h-60 overflow-y-auto rounded-md border bg-background shadow-md">
+                      {filtered.slice(0, 20).map((f) => (
+                        <button
+                          key={f.code}
+                          onClick={() => selectFund(f.code)}
+                          className="flex w-full items-center justify-between px-3 py-2.5 text-sm hover:bg-muted transition-colors"
+                        >
+                          <span className="min-w-0 flex-1 truncate">
+                            <span className="font-mono text-xs text-muted-foreground">
+                              {f.code}
+                            </span>
+                            <span className="ml-2">{f.name}</span>
+                          </span>
+                          <Badge variant="secondary" className="ml-2 shrink-0 text-[10px]">
+                            {f.categoryLabel}
+                          </Badge>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                }}
+              </Await>
+            </Suspense>
           </div>
 
           {/* 移动端：点击触发的搜索入口 */}
@@ -207,20 +209,26 @@ export default function OTCFundDetail() {
         </section>
 
         {/* 分析内容 */}
-        {initialDetail ? (
-          <>
-            <div className="mb-3 flex justify-end">
-              <ShareExport
-                module="analysis"
-                data={{ fund: initialDetail }}
-                fileName={`otc-fund-${initialDetail.code}`}
-              />
-            </div>
-            <AnalysisContent fund={initialDetail} />
-          </>
-        ) : (
-          <EmptyState />
-        )}
+        <Suspense fallback={<FundDetailPanelSkeleton />}>
+          <Await resolve={fundDetail}>
+            {(initialDetail) =>
+              initialDetail ? (
+                <>
+                  <div className="mb-3 flex justify-end">
+                    <ShareExport
+                      module="analysis"
+                      data={{ fund: initialDetail }}
+                      fileName={`otc-fund-${initialDetail.code}`}
+                    />
+                  </div>
+                  <AnalysisContent fund={initialDetail} />
+                </>
+              ) : (
+                <EmptyState />
+              )
+            }
+          </Await>
+        </Suspense>
       </main>
 
       {/* 移动端全屏搜索面板 */}
@@ -268,28 +276,51 @@ export default function OTCFundDetail() {
               </Button>
             </div>
 
-            <div className="mt-3 flex-1 overflow-y-auto">
-              {searchQuery.trim() && filteredFunds.length === 0 && (
-                <div className="py-8 text-center text-sm text-muted-foreground">无匹配基金</div>
-              )}
-              {filteredFunds.slice(0, 30).map((f) => (
-                <button
-                  key={f.code}
-                  onClick={() => selectFund(f.code)}
-                  className="flex min-h-12 w-full items-center justify-between border-b px-2 py-2 text-left active:bg-muted"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-muted-foreground">{f.code}</span>
-                      <span className="truncate text-sm">{f.name}</span>
+            {/* 搜索结果列表：同样依赖 fundList */}
+            <Suspense fallback={null}>
+              <Await resolve={fundList}>
+                {(list) => {
+                  const q = searchQuery.trim().toLowerCase();
+                  const visibleFundList =
+                    activeCategory === "all"
+                      ? list
+                      : list.filter((f) => f.category === activeCategory);
+                  const filtered = !q
+                    ? []
+                    : visibleFundList.filter(
+                        (f) => f.code.toLowerCase().includes(q) || f.name.toLowerCase().includes(q),
+                      );
+                  return (
+                    <div className="mt-3 flex-1 overflow-y-auto">
+                      {q && filtered.length === 0 && (
+                        <div className="py-8 text-center text-sm text-muted-foreground">
+                          无匹配基金
+                        </div>
+                      )}
+                      {filtered.slice(0, 30).map((f) => (
+                        <button
+                          key={f.code}
+                          onClick={() => selectFund(f.code)}
+                          className="flex min-h-12 w-full items-center justify-between border-b px-2 py-2 text-left active:bg-muted"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-xs text-muted-foreground">
+                                {f.code}
+                              </span>
+                              <span className="truncate text-sm">{f.name}</span>
+                            </div>
+                          </div>
+                          <Badge variant="secondary" className="ml-2 shrink-0 text-[10px]">
+                            {f.categoryLabel}
+                          </Badge>
+                        </button>
+                      ))}
                     </div>
-                  </div>
-                  <Badge variant="secondary" className="ml-2 shrink-0 text-[10px]">
-                    {f.categoryLabel}
-                  </Badge>
-                </button>
-              ))}
-            </div>
+                  );
+                }}
+              </Await>
+            </Suspense>
           </motion.div>
         )}
       </AnimatePresence>

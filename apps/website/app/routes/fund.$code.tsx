@@ -13,16 +13,18 @@ import {
   History,
   Users,
 } from "lucide-react";
-import { getFundDetailData } from "~/lib/market-data";
+import {
+  getFundBasicData,
+  getFundHeavyData,
+  type FundBasicData,
+  type FundHeavyData,
+} from "~/lib/market-data";
 import { ShareExport } from "~/components/share-export";
 import { AppHeader } from "~/components/app-header";
 import { Breadcrumb } from "~/components/ui/breadcrumb";
-import {
-  buildMeta,
-  buildFundJsonLd,
-  buildBreadcrumbJsonLd,
-  buildFaqJsonLd,
-} from "~/lib/seo";
+import { AsyncSection } from "~/components/ui/async-section";
+import { FundDetailHeavySkeleton } from "~/components/ui/skeletons";
+import { buildMeta, buildFundJsonLd, buildBreadcrumbJsonLd, buildFaqJsonLd } from "~/lib/seo";
 
 export function meta({ data }: Route.MetaArgs) {
   // 404 时 data 为 undefined：直接输出 noindex 的简单 meta，
@@ -35,352 +37,350 @@ export function meta({ data }: Route.MetaArgs) {
       noindex: true,
     });
   }
-  const fund = data;
-  const title = `${fund.name}（${fund.code}）`;
-  const description =
-    `${fund.name}（${fund.code}）详情：费率${fund.fee ?? "—"}，` +
-    `规模${fund.scale ?? "—"}，` +
-    `近1年收益${fund.performance?.oneYear != null ? `${fund.performance.oneYear}%` : "—"}，` +
-    `近3年收益${fund.performance?.threeYear != null ? `${fund.performance.threeYear}%` : "—"}。` +
-    `净值走势、月度收益、经理履历、重仓股实时行情一站查看。`;
+  // loader 已 await getFundBasicData → basic 同步可用，SEO meta 仍能注入真实基金名
+  // heavy 是 Promise（meta 同步阶段无法解析），SEO 描述只引用 basic 字段
+  const { basic } = data as { basic: FundBasicData; heavy: Promise<FundHeavyData> };
 
-  // FAQ:面向搜索「xxx 是什么基金 / 怎么买 / 收益 / 风险」类长尾词,
-  // 由 schema.org 的 FAQPage 解析,Google 富媒体结果会展开为可点击问答块
-  const oneYearText = fund.performance?.oneYear != null ? `${fund.performance.oneYear}%` : "—";
-  const threeYearText = fund.performance?.threeYear != null ? `${fund.performance.threeYear}%` : "—";
-  const faqList = [
-    {
-      question: `${fund.name}（${fund.code}）是什么基金？`,
-      answer: `${fund.name}（基金代码 ${fund.code}）是一只场外基金，${
-        fund.index && fund.index !== "—"
-          ? `跟踪指数「${fund.index}」，`
-          : ""
-      }最新净值 ${fund.price ?? "—"}，管理费率 ${fund.fee && fund.fee !== "—" ? fund.fee : "详见基金公司公告"}，基金规模 ${
-        fund.scale ?? "—"
-      }。`,
-    },
-    {
-      question: `${fund.name}近1年和近3年收益怎么样？`,
-      answer: `${fund.name}近1年收益 ${oneYearText}，近3年收益 ${threeYearText}。完整阶段收益可在「历史业绩」区域查看（近1月/3月/6月/1年）。`,
-    },
-    {
-      question: `${fund.name}的费率是多少？`,
-      answer: `${fund.name}管理费率 ${fund.fee ?? "—"}，基金规模 ${fund.scale ?? "—"}。基金费率直接影响长期持有收益，建议关注综合费率水平。`,
-    },
-    {
-      question: `${fund.name}可以申购吗？当前状态如何？`,
-      answer: `可在天天基金、支付宝、蛋卷等第三方平台或基金公司官网查询 ${fund.name}（${fund.code}）当日最新申购状态；本平台提供净值走势与重仓股追踪，申购/赎回以平台实时状态为准。`,
-    },
-  ];
+  const title = `${basic.name}（${basic.code}）`;
+  const description =
+    `${basic.name}（${basic.code}）详情：费率${basic.fee}，` +
+    `规模${basic.scale}，` +
+    `最新净值${basic.price}，` +
+    `昨日涨跌${basic.changePercent}%。净值走势、月度收益、重仓股实时行情一站查看。`;
 
   return buildMeta({
     title,
     description,
-    path: `/fund/${fund.code}`,
+    path: `/fund/${basic.code}`,
     type: "article",
     extra: [
-      buildFundJsonLd({ ...fund, path: `/fund/${fund.code}` }),
+      buildFundJsonLd({ ...basic, path: `/fund/${basic.code}` } as never),
       // 面包屑:首页 > QDII基金 > 当前基金
       buildBreadcrumbJsonLd([
         { name: "首页", path: "/" },
         { name: "QDII基金", path: "/qdii" },
-        { name: fund.name, path: `/fund/${fund.code}` },
+        { name: basic.name, path: `/fund/${basic.code}` },
       ]),
-      // FAQPage:覆盖「是什么/收益/费率/申购」4 个高频搜索问
-      buildFaqJsonLd(faqList),
+      // FAQPage:基于基础信息生成,heavy 数据到达后会再补全
+      buildFaqJsonLd([
+        {
+          question: `${basic.name}（${basic.code}）是什么基金？`,
+          answer: `${basic.name}（基金代码 ${basic.code}）是一只场外基金，最新净值 ${basic.price}，管理费率 ${basic.fee}，基金规模 ${basic.scale}。`,
+        },
+      ]),
     ],
   });
 }
 
 export async function loader({ params }: Route.LoaderArgs) {
-  const fund = await getFundDetailData(params.code);
-  if (!fund) {
+  // 基础信息走东方财富 datacenter API（单次 ~1s），同步 await 以保留 meta() 注入真实基金名的能力
+  const basic = await getFundBasicData(params.code);
+  // 兜底防护：name === code 视为无效（天天基金对不存在 code 仍返回 200 错误页）
+  if (!basic || basic.name === params.code) {
     throw new Response("基金未找到", { status: 404 });
   }
-  return fund;
+  return {
+    basic,
+    // 重数据不 await → defer 走后台，组件用 <AsyncSection> 流式渲染
+    heavy: getFundHeavyData(params.code),
+  };
 }
 
 export default function FundDetail() {
-  const fund = useLoaderData<typeof loader>();
+  const { basic, heavy } = useLoaderData<typeof loader>();
 
   return (
     <div className="min-h-screen bg-background">
-      <AppHeader currentLabel={fund.name} />
+      <AppHeader currentLabel={basic.name} />
       <main className="container mx-auto max-w-4xl px-3 py-6 sm:px-4">
         {/* 面包屑：与 meta() 里的 BreadcrumbList JSON-LD 对齐 */}
         <Breadcrumb
           items={[
             { name: "首页", path: "/" },
             { name: "QDII基金", path: "/qdii" },
-            { name: fund.name },
+            { name: basic.name },
           ]}
         />
-        {/* 基金标题 */}
+        {/* 基金标题 + 核心指标卡片（基于 basic,首屏即出） */}
         <FadeIn className="mb-6 flex items-end justify-between" delay={0.1}>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold md:text-3xl">{fund.name}</h1>
+              <h1 className="text-2xl font-bold md:text-3xl">{basic.name}</h1>
               <Badge variant="secondary" className="font-mono">
-                {fund.code}
+                {basic.code}
               </Badge>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">场外基金</p>
           </div>
-          <ShareExport module="fund-detail" data={{ fund }} fileName={`fund-${fund.code}`} />
+          <ShareExport
+            module="fund-detail"
+            data={{ fund: basic } as never}
+            fileName={`fund-${basic.code}`}
+          />
         </FadeIn>
 
-        {/* 详情区域 */}
-        <div className="bg-background p-2">
-          {/* 核心指标卡片 */}
-          <StaggerContainer
-            className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4"
-            stagger={0.08}
-          >
-            <StaggerItem>
-              <Card>
-                <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
-                  <span className="text-xs text-muted-foreground">最新净值</span>
-                  <span className="text-2xl font-bold">{fund.price || "—"}</span>
-                  <span className="flex items-center gap-1 text-xs">
-                    {fund.changePercent > 0 ? (
-                      <TrendingUp className="size-3 text-red-500" />
-                    ) : fund.changePercent < 0 ? (
-                      <TrendingDown className="size-3 text-emerald-500" />
-                    ) : (
-                      <Activity className="size-3 text-muted-foreground" />
-                    )}
-                    <span
-                      className={
-                        fund.changePercent > 0
-                          ? "text-red-500"
-                          : fund.changePercent < 0
-                            ? "text-emerald-500"
-                            : "text-muted-foreground"
-                      }
-                    >
-                      {fund.changePercent > 0 ? "+" : ""}
-                      {fund.changePercent}%
-                    </span>
-                  </span>
-                </CardContent>
-              </Card>
-            </StaggerItem>
+        {/* 重数据区（走势 / 业绩 / 重仓 / 净值）走 defer + Skeleton */}
+        <AsyncSection resolve={heavy} fallback={<FundDetailHeavySkeleton />}>
+          {(h) => <FundHeavyContent heavy={h as FundHeavyData} basic={basic} />}
+        </AsyncSection>
 
-            <StaggerItem>
-              <Card>
-                <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
-                  <span className="text-xs text-muted-foreground">近1年收益</span>
-                  <span
-                    className={`text-2xl font-bold ${(fund.performance.oneYear ?? 0) >= 0 ? "text-red-500" : "text-emerald-500"}`}
-                  >
-                    {fund.performance.oneYear !== null
-                      ? `${fund.performance.oneYear > 0 ? "+" : ""}${fund.performance.oneYear}%`
-                      : "—"}
-                  </span>
-                  <span className="text-xs text-muted-foreground">阶段涨幅</span>
-                </CardContent>
-              </Card>
-            </StaggerItem>
-
-            <StaggerItem>
-              <Card>
-                <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
-                  <span className="text-xs text-muted-foreground">基金规模</span>
-                  <span className="text-2xl font-bold">{fund.scale}</span>
-                  <span className="text-xs text-muted-foreground">管理规模</span>
-                </CardContent>
-              </Card>
-            </StaggerItem>
-
-            <StaggerItem>
-              <Card>
-                <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
-                  <span className="text-xs text-muted-foreground">管理费率</span>
-                  <span className="text-2xl font-bold">{fund.fee}</span>
-                  <span className="text-xs text-muted-foreground">年费率</span>
-                </CardContent>
-              </Card>
-            </StaggerItem>
-          </StaggerContainer>
-
-          {/* ====== 业绩走势 ====== */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-                <LineChart className="size-4 text-blue-500" />
-                业绩走势
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {fund.navTrend.length > 0 ? (
-                <NavTrendSection data={fund.navTrend} />
-              ) : (
-                <p className="text-center text-sm text-muted-foreground">暂无业绩走势数据</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* ====== 历史业绩 ====== */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-                <Trophy className="size-4 text-amber-500" />
-                历史业绩
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <PerformanceCard label="近1月" value={fund.performance.oneMonth} />
-                <PerformanceCard label="近3月" value={fund.performance.threeMonth} />
-                <PerformanceCard label="近6月" value={fund.performance.sixMonth} />
-                <PerformanceCard label="近1年" value={fund.performance.oneYear} />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* ====== 重仓股行情 ====== */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-                <Users className="size-4 text-purple-500" />
-                重仓股行情
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {fund.topHoldings.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-xs text-muted-foreground">
-                        <th className="pb-2 text-left font-medium">代码</th>
-                        <th className="pb-2 text-left font-medium">名称</th>
-                        <th className="pb-2 text-right font-medium">持仓占比</th>
-                        <th className="pb-2 text-right font-medium">最新价</th>
-                        <th className="pb-2 text-right font-medium">涨跌幅</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {fund.topHoldings.map((stock) => (
-                        <tr key={stock.symbol} className="border-b last:border-0">
-                          <td className="py-2 font-mono text-xs">{stock.symbol}</td>
-                          <td className="py-2">{stock.name}</td>
-                          <td className="py-2 text-right">
-                            {stock.holdingRatio > 0 ? (
-                              <span className="font-medium">{stock.holdingRatio.toFixed(2)}%</span>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </td>
-                          <td className="py-2 text-right">
-                            {stock.price > 0 ? `$${stock.price.toFixed(2)}` : "—"}
-                          </td>
-                          <td className="py-2 text-right">
-                            <span
-                              className={
-                                stock.changePercent > 0
-                                  ? "text-red-500"
-                                  : stock.changePercent < 0
-                                    ? "text-emerald-500"
-                                    : "text-muted-foreground"
-                              }
-                            >
-                              {stock.changePercent > 0 ? "+" : ""}
-                              {stock.changePercent.toFixed(2)}%
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-center text-sm text-muted-foreground">暂无重仓股数据</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* ====== 历史净值 ====== */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-                <History className="size-4 text-teal-500" />
-                历史净值
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {fund.navHistory.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-xs text-muted-foreground">
-                        <th className="pb-2 text-left font-medium">日期</th>
-                        <th className="pb-2 text-right font-medium">单位净值</th>
-                        <th className="pb-2 text-right font-medium">累计净值</th>
-                        <th className="pb-2 text-right font-medium">日增长率</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {fund.navHistory.map((row) => {
-                        const growth = parseFloat(row.dailyGrowth);
-                        return (
-                          <tr key={row.date} className="border-b last:border-0">
-                            <td className="py-2 text-xs">{row.date}</td>
-                            <td className="py-2 text-right">{row.nav}</td>
-                            <td className="py-2 text-right">{row.accNav}</td>
-                            <td className="py-2 text-right">
-                              <span
-                                className={
-                                  growth > 0
-                                    ? "text-red-500"
-                                    : growth < 0
-                                      ? "text-emerald-500"
-                                      : "text-muted-foreground"
-                                }
-                              >
-                                {isNaN(growth)
-                                  ? "—"
-                                  : `${growth > 0 ? "+" : ""}${row.dailyGrowth}%`}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-center text-sm text-muted-foreground">暂无历史净值数据</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 基金信息 */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="text-sm md:text-base">基金信息</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-2 text-sm sm:grid-cols-2">
-                <InfoRow label="基金代码" value={fund.code} />
-                <InfoRow label="基金名称" value={fund.name} />
-                <InfoRow label="最新净值" value={`${fund.price}`} />
-                <InfoRow
-                  label="昨日涨跌"
-                  value={`${fund.changePercent > 0 ? "+" : ""}${fund.changePercent}%`}
-                />
-                <InfoRow label="基金规模" value={fund.scale} />
-                <InfoRow label="管理费率" value={fund.fee} />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 免责声明 */}
-          <p className="text-center text-xs text-muted-foreground">
-            数据仅供参考，不构成投资建议。
-          </p>
-        </div>
-        {/* 详情区域结束 */}
+        <p className="mt-6 text-center text-xs text-muted-foreground">
+          数据仅供参考，不构成投资建议。
+        </p>
       </main>
+    </div>
+  );
+}
+
+/**
+ * 基金重数据区：业绩走势 / 历史业绩 / 重仓股 / 历史净值 / 基金信息
+ * 仅在 heavy 数据到达后渲染
+ */
+function FundHeavyContent({ heavy, basic }: { heavy: FundHeavyData; basic: FundBasicData }) {
+  return (
+    <div className="bg-background p-2">
+      {/* 核心指标卡片（补上 heavy 里可能更准的 performance / 实时估值等） */}
+      <StaggerContainer
+        className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4"
+        stagger={0.08}
+      >
+        <StaggerItem>
+          <Card>
+            <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
+              <span className="text-xs text-muted-foreground">最新净值</span>
+              <span className="text-2xl font-bold">{basic.price || "—"}</span>
+              <span className="flex items-center gap-1 text-xs">
+                {basic.changePercent > 0 ? (
+                  <TrendingUp className="size-3 text-red-500" />
+                ) : basic.changePercent < 0 ? (
+                  <TrendingDown className="size-3 text-emerald-500" />
+                ) : (
+                  <Activity className="size-3 text-muted-foreground" />
+                )}
+                <span
+                  className={
+                    basic.changePercent > 0
+                      ? "text-red-500"
+                      : basic.changePercent < 0
+                        ? "text-emerald-500"
+                        : "text-muted-foreground"
+                  }
+                >
+                  {basic.changePercent > 0 ? "+" : ""}
+                  {basic.changePercent}%
+                </span>
+              </span>
+            </CardContent>
+          </Card>
+        </StaggerItem>
+
+        <StaggerItem>
+          <Card>
+            <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
+              <span className="text-xs text-muted-foreground">近1年收益</span>
+              <span
+                className={`text-2xl font-bold ${
+                  (heavy.performance.oneYear ?? 0) >= 0 ? "text-red-500" : "text-emerald-500"
+                }`}
+              >
+                {heavy.performance.oneYear !== null
+                  ? `${heavy.performance.oneYear > 0 ? "+" : ""}${heavy.performance.oneYear}%`
+                  : "—"}
+              </span>
+              <span className="text-xs text-muted-foreground">阶段涨幅</span>
+            </CardContent>
+          </Card>
+        </StaggerItem>
+
+        <StaggerItem>
+          <Card>
+            <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
+              <span className="text-xs text-muted-foreground">基金规模</span>
+              <span className="text-2xl font-bold">{basic.scale}</span>
+              <span className="text-xs text-muted-foreground">管理规模</span>
+            </CardContent>
+          </Card>
+        </StaggerItem>
+
+        <StaggerItem>
+          <Card>
+            <CardContent className="flex flex-col items-center gap-0.5 py-4 text-center">
+              <span className="text-xs text-muted-foreground">管理费率</span>
+              <span className="text-2xl font-bold">{basic.fee}</span>
+              <span className="text-xs text-muted-foreground">年费率</span>
+            </CardContent>
+          </Card>
+        </StaggerItem>
+      </StaggerContainer>
+
+      {/* ====== 业绩走势 ====== */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+            <LineChart className="size-4 text-blue-500" />
+            业绩走势
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {heavy.navTrend.length > 0 ? (
+            <NavTrendSection data={heavy.navTrend} />
+          ) : (
+            <p className="text-center text-sm text-muted-foreground">暂无业绩走势数据</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ====== 历史业绩 ====== */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+            <Trophy className="size-4 text-amber-500" />
+            历史业绩
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <PerformanceCard label="近1月" value={heavy.performance.oneMonth} />
+            <PerformanceCard label="近3月" value={heavy.performance.threeMonth} />
+            <PerformanceCard label="近6月" value={heavy.performance.sixMonth} />
+            <PerformanceCard label="近1年" value={heavy.performance.oneYear} />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ====== 重仓股行情 ====== */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+            <Users className="size-4 text-purple-500" />
+            重仓股行情
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {heavy.topHoldings.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-xs text-muted-foreground">
+                    <th className="pb-2 text-left font-medium">代码</th>
+                    <th className="pb-2 text-left font-medium">名称</th>
+                    <th className="pb-2 text-right font-medium">持仓占比</th>
+                    <th className="pb-2 text-right font-medium">最新价</th>
+                    <th className="pb-2 text-right font-medium">涨跌幅</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {heavy.topHoldings.map((stock) => (
+                    <tr key={stock.symbol} className="border-b last:border-0">
+                      <td className="py-2 font-mono text-xs">{stock.symbol}</td>
+                      <td className="py-2">{stock.name}</td>
+                      <td className="py-2 text-right">
+                        {stock.holdingRatio > 0 ? (
+                          <span className="font-medium">{stock.holdingRatio.toFixed(2)}%</span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="py-2 text-right">
+                        {stock.price > 0 ? `$${stock.price.toFixed(2)}` : "—"}
+                      </td>
+                      <td className="py-2 text-right">
+                        <span
+                          className={
+                            stock.changePercent > 0
+                              ? "text-red-500"
+                              : stock.changePercent < 0
+                                ? "text-emerald-500"
+                                : "text-muted-foreground"
+                          }
+                        >
+                          {stock.changePercent > 0 ? "+" : ""}
+                          {stock.changePercent.toFixed(2)}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-center text-sm text-muted-foreground">暂无重仓股数据</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ====== 历史净值 ====== */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-sm md:text-base">
+            <History className="size-4 text-teal-500" />
+            历史净值
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {heavy.navHistory.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-xs text-muted-foreground">
+                    <th className="pb-2 text-left font-medium">日期</th>
+                    <th className="pb-2 text-right font-medium">单位净值</th>
+                    <th className="pb-2 text-right font-medium">累计净值</th>
+                    <th className="pb-2 text-right font-medium">日增长率</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {heavy.navHistory.map((row) => {
+                    const growth = parseFloat(row.dailyGrowth);
+                    return (
+                      <tr key={row.date} className="border-b last:border-0">
+                        <td className="py-2 text-xs">{row.date}</td>
+                        <td className="py-2 text-right">{row.nav}</td>
+                        <td className="py-2 text-right">{row.accNav}</td>
+                        <td className="py-2 text-right">
+                          <span
+                            className={
+                              growth > 0
+                                ? "text-red-500"
+                                : growth < 0
+                                  ? "text-emerald-500"
+                                  : "text-muted-foreground"
+                            }
+                          >
+                            {isNaN(growth) ? "—" : `${growth > 0 ? "+" : ""}${row.dailyGrowth}%`}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-center text-sm text-muted-foreground">暂无历史净值数据</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 基金信息 */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="text-sm md:text-base">基金信息</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-2 text-sm sm:grid-cols-2">
+            <InfoRow label="基金代码" value={basic.code} />
+            <InfoRow label="基金名称" value={basic.name} />
+            <InfoRow label="最新净值" value={`${basic.price}`} />
+            <InfoRow
+              label="昨日涨跌"
+              value={`${basic.changePercent > 0 ? "+" : ""}${basic.changePercent}%`}
+            />
+            <InfoRow label="基金规模" value={basic.scale} />
+            <InfoRow label="管理费率" value={basic.fee} />
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -397,7 +397,11 @@ const TIME_RANGES: Array<{ key: TimeRange; label: string; days: number }> = [
   { key: "all", label: "成立来", days: Infinity },
 ];
 
-function NavTrendSection({ data }: { data: Array<{ date: string; nav: number }> }) {
+function NavTrendSection({
+  data,
+}: {
+  data: Array<{ date: string; nav: number; dailyReturn: number }>;
+}) {
   const [range, setRange] = useState<TimeRange>("1y");
 
   const filtered = useMemo(() => {
@@ -434,7 +438,11 @@ function NavTrendSection({ data }: { data: Array<{ date: string; nav: number }> 
 }
 
 /** 净值走势迷你图（纯SVG，支持鼠标/触摸交互，可选中数据点） */
-function NavTrendChart({ data }: { data: Array<{ date: string; nav: number }> }) {
+function NavTrendChart({
+  data,
+}: {
+  data: Array<{ date: string; nav: number; dailyReturn: number }>;
+}) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
 
