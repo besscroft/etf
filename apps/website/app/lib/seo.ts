@@ -184,3 +184,70 @@ export function buildFundJsonLd(fund: FundJsonLdInput): MetaDescriptor {
 
   return { "script:ld+json": product };
 }
+
+/**
+ * BreadcrumbList JSON-LD
+ * 用于面包屑导航的语义化标记：Google 搜索结果会在标题下方显示层级路径，
+ * 提升点击率（用户清楚点进去是「哪个分类下的哪个基金」）。
+ *
+ * @param items 面包屑节点，每项至少包含 name 和 path（最后一项是当前页，可省略 path）
+ */
+export interface BreadcrumbItem {
+  name: string;
+  path?: string;
+}
+
+export function buildBreadcrumbJsonLd(items: BreadcrumbItem[]): MetaDescriptor {
+  const list = items.map((item, idx) => {
+    const isLast = idx === items.length - 1;
+    const node: Record<string, unknown> = {
+      "@type": "ListItem",
+      position: idx + 1,
+      name: item.name,
+    };
+    if (!isLast && item.path) {
+      node.item = absUrl(item.path);
+    } else if (isLast) {
+      // 当前页：用绝对 URL（schema.org 规范要求 item 是 URL）
+      node.item = item.path ? absUrl(item.path) : SITE_URL;
+    }
+    return node;
+  });
+
+  return {
+    "script:ld+json": {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: list,
+    } as any,
+  };
+}
+
+/**
+ * FAQPage JSON-LD
+ * 基金详情页的「常见问题」语义化标记：Google 富媒体搜索会展开成可点击的问答块，
+ * 占据搜索结果大块视觉空间，显著提升点击率。
+ *
+ * @param qaList 问答对数组
+ */
+export interface FaqItem {
+  question: string;
+  answer: string;
+}
+
+export function buildFaqJsonLd(qaList: FaqItem[]): MetaDescriptor {
+  return {
+    "script:ld+json": {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      mainEntity: qaList.map((qa) => ({
+        "@type": "Question",
+        name: qa.question,
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: qa.answer,
+        },
+      })),
+    } as any,
+  };
+}

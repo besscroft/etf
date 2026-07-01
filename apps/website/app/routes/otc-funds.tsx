@@ -33,14 +33,12 @@ import { COMPARE_COLORS, MAX_COMPARE } from "~/components/compare-mobile/constan
 import { AppHeader } from "~/components/app-header";
 
 export function meta() {
-  return [
-    { title: "ETFVoid - 场外基金对比" },
-    {
-      name: "description",
-      content:
-        "多只场外基金对比：覆盖股票型/混合型/指数型/债券型/QDII/FOF，净值趋势、阶段收益、费率、风险并排展示",
-    },
-  ];
+  return buildMeta({
+    title: "场外基金对比",
+    description:
+      "多只场外基金对比：覆盖股票型/混合型/指数型/债券型/QDII/FOF，净值趋势、阶段收益、费率、风险并排展示",
+    path: "/otc-funds",
+  });
 }
 
 export async function loader({ request }: Route.LoaderArgs) {

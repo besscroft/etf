@@ -25,13 +25,12 @@ import { ShareExport } from "~/components/share-export";
 import { AppHeader } from "~/components/app-header";
 
 export function meta() {
-  return [
-    { title: "ETFVoid - QDII 基金" },
-    {
-      name: "description",
-      content: "全部QDII基金一览：纳斯达克100、标普500、主动型美股，支持对比与分析",
-    },
-  ];
+  return buildMeta({
+    title: "QDII 基金大全",
+    description:
+      "全部QDII基金一览：纳斯达克100、标普500、主动型美股，支持多基金对比与单基金深度分析",
+    path: "/qdii",
+  });
 }
 
 export async function loader() {

@@ -23,13 +23,11 @@ import { ShareExport } from "~/components/share-export";
 import { AppHeader } from "~/components/app-header";
 
 export function meta() {
-  return [
-    { title: "ETFVoid - 场外纳斯达克100（被动型）" },
-    {
-      name: "description",
-      content: "场外纳斯达克100指数基金对比：规模、收益率、申购状态一览",
-    },
-  ];
+  return buildMeta({
+    title: "场外纳斯达克100（被动型）",
+    description: "场外纳斯达克100指数基金对比：规模、收益率、申购状态一览",
+    path: "/nasdaq",
+  });
 }
 
 export async function loader() {

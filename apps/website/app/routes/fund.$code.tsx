@@ -16,7 +16,13 @@ import {
 import { getFundDetailData } from "~/lib/market-data";
 import { ShareExport } from "~/components/share-export";
 import { AppHeader } from "~/components/app-header";
-import { buildMeta, buildFundJsonLd } from "~/lib/seo";
+import { Breadcrumb } from "~/components/ui/breadcrumb";
+import {
+  buildMeta,
+  buildFundJsonLd,
+  buildBreadcrumbJsonLd,
+  buildFaqJsonLd,
+} from "~/lib/seo";
 
 export function meta({ data }: Route.MetaArgs) {
   // 404 时 data 为 undefined：直接输出 noindex 的简单 meta，
@@ -38,12 +44,51 @@ export function meta({ data }: Route.MetaArgs) {
     `近3年收益${fund.performance?.threeYear != null ? `${fund.performance.threeYear}%` : "—"}。` +
     `净值走势、月度收益、经理履历、重仓股实时行情一站查看。`;
 
+  // FAQ:面向搜索「xxx 是什么基金 / 怎么买 / 收益 / 风险」类长尾词,
+  // 由 schema.org 的 FAQPage 解析,Google 富媒体结果会展开为可点击问答块
+  const oneYearText = fund.performance?.oneYear != null ? `${fund.performance.oneYear}%` : "—";
+  const threeYearText = fund.performance?.threeYear != null ? `${fund.performance.threeYear}%` : "—";
+  const faqList = [
+    {
+      question: `${fund.name}（${fund.code}）是什么基金？`,
+      answer: `${fund.name}（基金代码 ${fund.code}）是一只场外基金，${
+        fund.index && fund.index !== "—"
+          ? `跟踪指数「${fund.index}」，`
+          : ""
+      }最新净值 ${fund.price ?? "—"}，管理费率 ${fund.fee && fund.fee !== "—" ? fund.fee : "详见基金公司公告"}，基金规模 ${
+        fund.scale ?? "—"
+      }。`,
+    },
+    {
+      question: `${fund.name}近1年和近3年收益怎么样？`,
+      answer: `${fund.name}近1年收益 ${oneYearText}，近3年收益 ${threeYearText}。完整阶段收益可在「历史业绩」区域查看（近1月/3月/6月/1年）。`,
+    },
+    {
+      question: `${fund.name}的费率是多少？`,
+      answer: `${fund.name}管理费率 ${fund.fee ?? "—"}，基金规模 ${fund.scale ?? "—"}。基金费率直接影响长期持有收益，建议关注综合费率水平。`,
+    },
+    {
+      question: `${fund.name}可以申购吗？当前状态如何？`,
+      answer: `可在天天基金、支付宝、蛋卷等第三方平台或基金公司官网查询 ${fund.name}（${fund.code}）当日最新申购状态；本平台提供净值走势与重仓股追踪，申购/赎回以平台实时状态为准。`,
+    },
+  ];
+
   return buildMeta({
     title,
     description,
     path: `/fund/${fund.code}`,
     type: "article",
-    extra: [buildFundJsonLd({ ...fund, path: `/fund/${fund.code}` })],
+    extra: [
+      buildFundJsonLd({ ...fund, path: `/fund/${fund.code}` }),
+      // 面包屑:首页 > QDII基金 > 当前基金
+      buildBreadcrumbJsonLd([
+        { name: "首页", path: "/" },
+        { name: "QDII基金", path: "/qdii" },
+        { name: fund.name, path: `/fund/${fund.code}` },
+      ]),
+      // FAQPage:覆盖「是什么/收益/费率/申购」4 个高频搜索问
+      buildFaqJsonLd(faqList),
+    ],
   });
 }
 
@@ -62,6 +107,14 @@ export default function FundDetail() {
     <div className="min-h-screen bg-background">
       <AppHeader currentLabel={fund.name} />
       <main className="container mx-auto max-w-4xl px-3 py-6 sm:px-4">
+        {/* 面包屑：与 meta() 里的 BreadcrumbList JSON-LD 对齐 */}
+        <Breadcrumb
+          items={[
+            { name: "首页", path: "/" },
+            { name: "QDII基金", path: "/qdii" },
+            { name: fund.name },
+          ]}
+        />
         {/* 基金标题 */}
         <FadeIn className="mb-6 flex items-end justify-between" delay={0.1}>
           <div>
