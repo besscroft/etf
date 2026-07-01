@@ -26,12 +26,27 @@ import {
   Layers,
   Wallet,
 } from "lucide-react";
-import { getMarketData, type MarketData } from "~/lib/market-data";
+import {
+  getHomeCoreData,
+  getHomeIndicatorsData,
+  getHomeFundsData,
+  type HomeCoreData,
+  type HomeIndicatorsData,
+  type HomeFundsData,
+  type QDIIFundData,
+} from "~/lib/market-data";
 import { cn } from "~/lib/utils";
 import { useState, useMemo } from "react";
 import { useMotionConfig, DURATION, EASING } from "~/lib/motion";
 import { AppHeader } from "~/components/app-header";
 import { buildMeta } from "~/lib/seo";
+import { AsyncSection } from "~/components/ui/async-section";
+import {
+  HomeHeroSkeleton,
+  MarketIndicatorsSkeleton,
+  MarketTemperatureSkeleton,
+  QDIIFundSectionSkeleton,
+} from "~/components/ui/skeletons";
 
 export function meta(_args: Route.MetaArgs) {
   return buildMeta({
@@ -43,31 +58,58 @@ export function meta(_args: Route.MetaArgs) {
 }
 
 export async function loader() {
-  const data = await getMarketData();
-  return data;
+  // 直接返回未 await 的 Promise —— React Router v7 框架模式的行为：
+  // 同步部分先渲染，对应 Promise 通过 <Await>+<Suspense> 流式进入。
+  // 三大数据块：首屏指数 / 情绪指标 / QDII 列表，冷启动时数据源是新浪+CBOE+multpl+东方财富，
+  // 拆成三块后页面 chrome 立即渲染，三个区块独立显示 skeleton、各自 streaming 进入。
+  return {
+    core: getHomeCoreData(),
+    indicators: getHomeIndicatorsData(),
+    funds: getHomeFundsData(),
+  };
 }
 
 export default function Home() {
-  const data = useLoaderData<typeof loader>();
+  const { core, indicators, funds } = useLoaderData<typeof loader>();
 
   return (
     <div className="min-h-screen bg-background">
       <AppHeader enableScrollHide />
       <main className="container mx-auto max-w-6xl px-3 pb-4 sm:px-4">
-        <HeroSection data={data} />
-        <MarketIndicators data={data} />
-        <MarketTemperature data={data} />
+        {/* 首屏：4 个大盘指数。骨架走 HomeHeroSkeleton（4 个 MetricCard 形状） */}
+        <AsyncSection resolve={core} fallback={<HomeHeroSkeleton />}>
+          {(data) => <HeroSection data={data as HomeCoreData} />}
+        </AsyncSection>
+
+        {/* 情绪指标：4 个指标卡 */}
+        <AsyncSection resolve={indicators} fallback={<MarketIndicatorsSkeleton />}>
+          {(data) => <MarketIndicators data={data as HomeIndicatorsData} />}
+        </AsyncSection>
+
+        {/* 综合市场温度：依赖 indicators 数据，复用同一个 Promise */}
+        <AsyncSection resolve={indicators} fallback={<MarketTemperatureSkeleton />}>
+          {(data) => <MarketTemperature data={data as HomeIndicatorsData} />}
+        </AsyncSection>
+
+        {/* 投资工具箱：纯静态，立即渲染 */}
         <ToolboxSection />
-        <QDIIFundSection data={data} />
+
+        {/* QDII 基金区：搜索 + 表格/卡片 */}
+        <AsyncSection resolve={funds} fallback={<QDIIFundSectionSkeleton />}>
+          {(data) => <QDIIFundSection funds={(data as HomeFundsData).qdiiFunds} />}
+        </AsyncSection>
       </main>
-      <Footer fetchedAt={data.fetchedAt} />
+      {/* Footer 时间戳依赖 funds.fetchedAt；数据未到时显示"加载中" */}
+      <AsyncSection resolve={funds} fallback={<FooterLoading />}>
+        {(data) => <Footer fetchedAt={(data as HomeFundsData).fetchedAt} />}
+      </AsyncSection>
     </div>
   );
 }
 
 /* ==================== Hero 区域 ==================== */
 
-function HeroSection({ data }: { data: MarketData }) {
+function HeroSection({ data }: { data: HomeCoreData }) {
   return (
     <section className="py-8 md:py-16">
       {/* 首屏指标：stagger 依次入场，数字滚动 */}
@@ -160,7 +202,7 @@ function MetricCard({
 
 /* ==================== 市场情绪指标 ==================== */
 
-function MarketIndicators({ data }: { data: MarketData }) {
+function MarketIndicators({ data }: { data: HomeIndicatorsData }) {
   // VIX 等级判定
   const vixLevel = getVixLevel(data.vix.value);
   // 恐慌贪婪等级
@@ -345,7 +387,7 @@ function ProgressBar({ value, gradient }: { value: number; gradient: "vix" | "gr
 
 /* ==================== 综合市场温度 ==================== */
 
-function MarketTemperature({ data }: { data: MarketData }) {
+function MarketTemperature({ data }: { data: HomeIndicatorsData }) {
   const pePercentile = data.sp500PE.value ? estimatePePercentile(data.sp500PE.value) : 50;
   const fgScore = data.fearGreed.value;
   const vixScore = data.vix.value;
@@ -592,8 +634,7 @@ type QDIISortDir = "asc" | "desc";
 type QDIIFilterCategory = "all" | "nasdaq100" | "sp500" | "active";
 type QDIIFilterStatus = "all" | "open" | "suspended";
 
-function QDIIFundSection({ data }: { data: MarketData }) {
-  const funds = data.qdiiFunds;
+function QDIIFundSection({ funds }: { funds: QDIIFundData[] }) {
   const [sortField, setSortField] = useState<QDIISortField>("returnOneYear");
   const [sortDir, setSortDir] = useState<QDIISortDir>("desc");
   const [filterCategory, setFilterCategory] = useState<QDIIFilterCategory>("all");
@@ -1242,6 +1283,19 @@ function SegmentedFilter<K extends string>({
 }
 
 /* ==================== Footer ==================== */
+
+/** Footer 数据未到时占位（用普通文本占位，保持布局稳定） */
+function FooterLoading() {
+  return (
+    <footer className="border-t py-6 md:py-8">
+      <div className="container mx-auto max-w-6xl px-3 text-center text-xs text-muted-foreground sm:px-4">
+        <p className="mb-2">ETFVoid · 美股ETF与QDII基金追踪平台</p>
+        <p className="mb-1">数据加载中…</p>
+        <p>数据仅供参考，不构成投资建议。历史规律不能预测未来，投资有风险，入市需谨慎。</p>
+      </div>
+    </footer>
+  );
+}
 
 function Footer({ fetchedAt }: { fetchedAt: string }) {
   const time = new Date(fetchedAt);
