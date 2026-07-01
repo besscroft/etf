@@ -19,8 +19,17 @@ import { AppHeader } from "~/components/app-header";
 import { buildMeta, buildFundJsonLd } from "~/lib/seo";
 
 export function meta({ data }: Route.MetaArgs) {
-  // 404 时 data 为 undefined，用 loader 默认值兜底
-  const fund = data ?? { code: "未知", name: "基金" };
+  // 404 时 data 为 undefined：直接输出 noindex 的简单 meta，
+  // 避免搜索引擎收录到"未知（未知）"这种垃圾 title
+  if (!data) {
+    return buildMeta({
+      title: "基金未找到",
+      description: "该基金代码不存在或已下架。请返回首页使用搜索功能。",
+      path: "/fund/not-found",
+      noindex: true,
+    });
+  }
+  const fund = data;
   const title = `${fund.name}（${fund.code}）`;
   const description =
     `${fund.name}（${fund.code}）详情：费率${fund.fee ?? "—"}，` +

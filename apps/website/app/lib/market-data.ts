@@ -753,6 +753,10 @@ export async function getFundDetailData(code: string): Promise<FundDetailData | 
 
   if (!basic) return null;
 
+  // 兜底防护：name === code 视为无效（天天基金对不存在 code 仍返回 200 错误页，
+  // nameMatch 匹配不到会回填为 code 字符串，导致 meta 出现"NONEXIST（NONEXIST）"垃圾）
+  if (basic.name === code) return null;
+
   return cachedFetch(
     `fund-detail-${code}`,
     async () => {

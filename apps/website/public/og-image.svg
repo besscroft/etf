@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <!-- 品牌渐变（与 app.css 的 menu-gradient-bg 一致） -->
+    <linearGradient id="brand" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFED46" />
+      <stop offset="100%" stop-color="#FF7EC7" />
+    </linearGradient>
+    <linearGradient id="dark" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1a1a1a" />
+      <stop offset="100%" stop-color="#0a0a0a" />
+    </linearGradient>
+  </defs>
+
+  <!-- 底色 -->
+  <rect width="1200" height="630" fill="url(#dark)" />
+
+  <!-- 品牌色光斑（右上） -->
+  <circle cx="1050" cy="120" r="280" fill="url(#brand)" opacity="0.35" />
+  <!-- 品牌色光斑（左下） -->
+  <circle cx="120" cy="560" r="220" fill="url(#brand)" opacity="0.25" />
+
+  <!-- 顶部品牌条 -->
+  <rect x="80" y="80" width="180" height="6" rx="3" fill="url(#brand)" />
+
+  <!-- 站点名 -->
+  <text
+    x="80"
+    y="200"
+    font-family="Inter, -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif"
+    font-size="96"
+    font-weight="800"
+    fill="#ffffff"
+    letter-spacing="-2"
+  >ETFVoid</text>
+
+  <!-- 中文副标题 -->
+  <text
+    x="80"
+    y="280"
+    font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+    font-size="38"
+    font-weight="600"
+    fill="#ffffff"
+    opacity="0.9"
+  >美股 ETF 与 QDII 基金追踪平台</text>
+
+  <!-- 卖点 1 -->
+  <text
+    x="80"
+    y="400"
+    font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+    font-size="28"
+    font-weight="400"
+    fill="#ffffff"
+    opacity="0.75"
+  >·  纳斯达克 100 / 标普 500 实时净值</text>
+
+  <!-- 卖点 2 -->
+  <text
+    x="80"
+    y="450"
+    font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+    font-size="28"
+    font-weight="400"
+    fill="#ffffff"
+    opacity="0.75"
+  >·  费率 / 规模 / 阶段收益一键对比</text>
+
+  <!-- 卖点 3 -->
+  <text
+    x="80"
+    y="500"
+    font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+    font-size="28"
+    font-weight="400"
+    fill="#ffffff"
+    opacity="0.75"
+  >·  申购状态与重仓股行情追踪</text>
+
+  <!-- 域名角标 -->
+  <text
+    x="80"
+    y="570"
+    font-family="Inter, -apple-system, BlinkMacSystemFont, Arial, sans-serif"
+    font-size="22"
+    font-weight="500"
+    fill="#FFED46"
+    opacity="0.9"
+  >etf.zzzvoid.com</text>
+</svg>

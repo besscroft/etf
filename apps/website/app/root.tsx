@@ -11,6 +11,7 @@ import type { Route } from "./+types/root";
 import "./app.css";
 import { MenuProvider, mainMenu } from "~/components/app-header";
 import { buildSiteJsonLdObject, SITE_URL, THEME_COLOR } from "~/lib/seo";
+import { GA_MEASUREMENT_ID, isGAEnabled } from "~/lib/ga";
 
 // 全局 head 资源：图标、字体预连接、canonical 默认值
 export const links: Route.LinksFunction = () => [
@@ -27,6 +28,8 @@ export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/favicon.ico" },
   { rel: "apple-touch-icon", href: "/favicon.ico" },
   { rel: "canonical", href: SITE_URL },
+  // GA 域名预连接：让 gtag.js 首字节时间更短
+  { rel: "preconnect", href: "https://www.googletagmanager.com" },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -48,6 +51,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
           // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd) }}
         />
+        {/* Google Analytics (gtag.js) — 全站访问统计与广告效果归因 */}
+        {isGAEnabled() && (
+          <>
+            <script
+              async
+              src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(GA_MEASUREMENT_ID)}`}
+            />
+            <script
+              // eslint-disable-next-line react/no-danger
+              dangerouslySetInnerHTML={{
+                __html: `window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', '${GA_MEASUREMENT_ID}');`,
+              }}
+            />
+          </>
+        )}
       </head>
       <body>
         <MenuProvider config={mainMenu}>{children}</MenuProvider>

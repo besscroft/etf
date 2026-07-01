@@ -19,8 +19,8 @@ export const SITE_NAME = "ETFVoid";
 /** 站点品牌主色（与 app.css 中 menu-gradient 起点色保持一致） */
 export const THEME_COLOR = "#FFED46";
 
-/** og/twitter 缺省图（用户暂未提供专用素材，先用 favicon.ico 兜底） */
-const FALLBACK_OG_IMAGE = `${SITE_URL}/favicon.ico`;
+/** og/twitter 缺省图（站内自制 SVG 品牌卡；建议后续提供 1200x630 PNG 提升 Facebook/Twitter/微信兼容性） */
+const FALLBACK_OG_IMAGE = `${SITE_URL}/og-image.svg`;
 
 /** 拼接绝对 URL（自动处理首尾斜杠） */
 export function absUrl(path: string): string {
