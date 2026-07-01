@@ -14,4 +14,7 @@ export default [
   route("nasdaq", "routes/nasdaq.tsx"),
   route("sp500", "routes/sp500.tsx"),
   route("active", "routes/active.tsx"),
+  // SEO 资源路由
+  route("robots.txt", "routes/robots[.]txt.ts"),
+  route("sitemap.xml", "routes/sitemap[.]xml.ts"),
 ] satisfies RouteConfig;

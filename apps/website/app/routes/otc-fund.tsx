@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "~/com
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { FadeIn } from "~/components/motion";
+import { buildMeta } from "~/lib/seo";
 import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowUp,
@@ -39,14 +40,13 @@ import { ShareExport } from "~/components/share-export";
 import { AppHeader } from "~/components/app-header";
 
 export function meta() {
-  return [
-    { title: "ETFVoid - 场外基金详情" },
-    {
-      name: "description",
-      content:
-        "单只场外基金深度分析：净值走势、全周期收益、最大回撤、月度热力图、经理履历与分类标签",
-    },
-  ];
+  return buildMeta({
+    title: "场外基金详情",
+    description:
+      "单只场外基金深度分析：净值走势、全周期收益、最大回撤、月度热力图、经理履历与分类标签",
+    path: "/otc-fund",
+    type: "article",
+  });
 }
 
 export async function loader({ request }: Route.LoaderArgs) {

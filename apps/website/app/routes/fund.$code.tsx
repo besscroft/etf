@@ -16,12 +16,26 @@ import {
 import { getFundDetailData } from "~/lib/market-data";
 import { ShareExport } from "~/components/share-export";
 import { AppHeader } from "~/components/app-header";
+import { buildMeta, buildFundJsonLd } from "~/lib/seo";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [
-    { title: `ETFVoid - 基金 ${params.code}` },
-    { name: "description", content: `ETF基金 ${params.code} 详情` },
-  ];
+export function meta({ data }: Route.MetaArgs) {
+  // 404 时 data 为 undefined，用 loader 默认值兜底
+  const fund = data ?? { code: "未知", name: "基金" };
+  const title = `${fund.name}（${fund.code}）`;
+  const description =
+    `${fund.name}（${fund.code}）详情：费率${fund.fee ?? "—"}，` +
+    `规模${fund.scale ?? "—"}，` +
+    `近1年收益${fund.performance?.oneYear != null ? `${fund.performance.oneYear}%` : "—"}，` +
+    `近3年收益${fund.performance?.threeYear != null ? `${fund.performance.threeYear}%` : "—"}。` +
+    `净值走势、月度收益、经理履历、重仓股实时行情一站查看。`;
+
+  return buildMeta({
+    title,
+    description,
+    path: `/fund/${fund.code}`,
+    type: "article",
+    extra: [buildFundJsonLd({ ...fund, path: `/fund/${fund.code}` })],
+  });
 }
 
 export async function loader({ params }: Route.LoaderArgs) {

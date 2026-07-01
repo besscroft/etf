@@ -10,7 +10,9 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 import { MenuProvider, mainMenu } from "~/components/app-header";
+import { buildSiteJsonLdObject, SITE_URL, THEME_COLOR } from "~/lib/seo";
 
+// 全局 head 资源：图标、字体预连接、canonical 默认值
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   {
@@ -22,16 +24,30 @@ export const links: Route.LinksFunction = () => [
     rel: "stylesheet",
     href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap",
   },
+  { rel: "icon", href: "/favicon.ico" },
+  { rel: "apple-touch-icon", href: "/favicon.ico" },
+  { rel: "canonical", href: SITE_URL },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  // 站点级 JSON-LD：每个页面都会渲染一次（root 层），路由 meta() 不再重复输出 WebSite
+  const siteJsonLd = buildSiteJsonLdObject();
+
   return (
-    <html lang="en">
+    <html lang="zh-CN">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" content={THEME_COLOR} />
+        <meta name="format-detection" content="telephone=no" />
         <Meta />
         <Links />
+        {/* 站点级 WebSite + SearchAction 结构化数据（全局只此一份） */}
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd) }}
+        />
       </head>
       <body>
         <MenuProvider config={mainMenu}>{children}</MenuProvider>

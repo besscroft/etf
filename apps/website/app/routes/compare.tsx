@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "~/com
 import { Badge } from "~/components/ui/badge";
 import { FadeIn } from "~/components/motion";
 import { BarChart3, Search, X, Plus, Activity, LineChart, Trophy, Trash2 } from "lucide-react";
+import { buildMeta } from "~/lib/seo";
 import { getAllQDIIFundData, getFundCompareData, type FundDetailData } from "~/lib/market-data";
 import { ShareExport } from "~/components/share-export";
 import { useIsMobile } from "~/hooks/use-media-query";
@@ -14,10 +15,11 @@ import { COMPARE_COLORS, MAX_COMPARE } from "~/components/compare-mobile/constan
 import { AppHeader } from "~/components/app-header";
 
 export function meta() {
-  return [
-    { title: "ETFVoid - 基金对比" },
-    { name: "description", content: "多只ETF基金对比：净值趋势、阶段收益、费率、风险指标并排展示" },
-  ];
+  return buildMeta({
+    title: "基金对比",
+    description: "多只ETF基金对比：净值趋势、阶段收益、费率、风险指标并排展示",
+    path: "/cn/funds",
+  });
 }
 
 export async function loader({ request }: Route.LoaderArgs) {

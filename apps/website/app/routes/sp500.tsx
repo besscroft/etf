@@ -6,6 +6,7 @@ import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { FadeIn, MotionCard } from "~/components/motion";
 import { motion, AnimatePresence } from "motion/react";
+import { buildMeta } from "~/lib/seo";
 import {
   ArrowLeft,
   BarChart3,
@@ -22,13 +23,11 @@ import { ShareExport } from "~/components/share-export";
 import { AppHeader } from "~/components/app-header";
 
 export function meta() {
-  return [
-    { title: "ETFVoid - 场外标普500（被动型）" },
-    {
-      name: "description",
-      content: "场外标普500指数基金对比：规模、收益率、申购状态一览",
-    },
-  ];
+  return buildMeta({
+    title: "场外标普500（被动型）",
+    description: "场外标普500指数基金对比：规模、收益率、申购状态一览",
+    path: "/sp500",
+  });
 }
 
 export async function loader() {

@@ -6,6 +6,7 @@ import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { FadeIn } from "~/components/motion";
 import { motion, AnimatePresence } from "motion/react";
+import { buildMeta } from "~/lib/seo";
 import {
   ArrowLeft,
   BarChart3,

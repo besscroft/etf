@@ -7,6 +7,7 @@ import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { FadeIn } from "~/components/motion";
 import { motion, AnimatePresence } from "motion/react";
+import { buildMeta } from "~/lib/seo";
 import {
   ArrowUp,
   BarChart3,
@@ -30,13 +31,12 @@ import { ShareExport } from "~/components/share-export";
 import { AppHeader } from "~/components/app-header";
 
 export function meta() {
-  return [
-    { title: "ETFVoid - 基金分析" },
-    {
-      name: "description",
-      content: "单基金深度分析：净值走势、全周期收益、最大回撤、月度热力图与经理履历",
-    },
-  ];
+  return buildMeta({
+    title: "基金分析",
+    description: "单基金深度分析：净值走势、全周期收益、最大回撤、月度热力图与经理履历",
+    path: "/cn/fund",
+    type: "article",
+  });
 }
 
 export async function loader({ request }: Route.LoaderArgs) {

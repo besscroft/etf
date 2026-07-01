@@ -6,6 +6,7 @@ import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { FadeIn } from "~/components/motion";
 import { motion, AnimatePresence } from "motion/react";
+import { buildMeta } from "~/lib/seo";
 import {
   ArrowUpDown,
   ChevronUp,
@@ -35,13 +36,11 @@ import { ShareExport } from "~/components/share-export";
 import { AppHeader } from "~/components/app-header";
 
 export function meta() {
-  return [
-    { title: "ETFVoid - QDII 基金估值" },
-    {
-      name: "description",
-      content: "QDII基金实时估值追踪：盘中估值、估值偏差分析、估值走势与预警",
-    },
-  ];
+  return buildMeta({
+    title: "QDII 基金估值",
+    description: "QDII基金实时估值追踪：盘中估值、估值偏差分析、估值走势与预警",
+    path: "/qdii-valuation",
+  });
 }
 
 export async function loader() {

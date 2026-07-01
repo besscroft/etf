@@ -31,15 +31,15 @@ import { cn } from "~/lib/utils";
 import { useState, useMemo } from "react";
 import { useMotionConfig, DURATION, EASING } from "~/lib/motion";
 import { AppHeader } from "~/components/app-header";
+import { buildMeta } from "~/lib/seo";
 
 export function meta(_args: Route.MetaArgs) {
-  return [
-    { title: "ETFVoid - 美股ETF与QDII基金追踪平台" },
-    {
-      name: "description",
-      content: "覆盖纳斯达克100、标普500被动指数及主动型QDII基金，提供费率对比与申购状态追踪。",
-    },
-  ];
+  return buildMeta({
+    title: "美股ETF与QDII基金追踪平台",
+    description: "覆盖纳斯达克100、标普500被动指数及主动型QDII基金，提供费率对比与申购状态追踪。",
+    path: "/",
+    type: "website",
+  });
 }
 
 export async function loader() {

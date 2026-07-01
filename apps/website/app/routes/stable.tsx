@@ -5,6 +5,7 @@ import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { FadeIn } from "~/components/motion";
 import { motion, AnimatePresence } from "motion/react";
+import { buildMeta } from "~/lib/seo";
 import {
   ArrowLeft,
   Shield,
@@ -20,14 +21,12 @@ import { ShareExport } from "~/components/share-export";
 import { AppHeader } from "~/components/app-header";
 
 export function meta() {
-  return [
-    { title: "ETFVoid - 稳健收益" },
-    {
-      name: "description",
-      content:
-        "中美稳定理财对比：国债、企业债、REITs等低波动资产，信用评级、最大回撤与入场方式一览",
-    },
-  ];
+  return buildMeta({
+    title: "稳健收益",
+    description:
+      "中美稳定理财对比：国债、企业债、REITs等低波动资产，信用评级、最大回撤与入场方式一览",
+    path: "/global/stable",
+  });
 }
 
 // ==================== 稳健收益产品数据 ====================
