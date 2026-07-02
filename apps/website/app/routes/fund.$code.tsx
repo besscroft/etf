@@ -1,6 +1,6 @@
 import type { Route } from "./+types/fund.$code";
-import { useLoaderData } from "react-router";
-import { useState, useMemo } from "react";
+import { useLoaderData, useParams } from "react-router";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { FadeIn, StaggerContainer, StaggerItem } from "~/components/motion";
@@ -12,10 +12,12 @@ import {
   LineChart,
   History,
   Users,
+  AlertTriangle,
 } from "lucide-react";
 import {
   getFundBasicData,
   getFundHeavyData,
+  peekFundBasicStatus,
   type FundBasicData,
   type FundHeavyData,
 } from "~/lib/market-data";
@@ -24,111 +26,301 @@ import { AppHeader } from "~/components/app-header";
 import { Breadcrumb } from "~/components/ui/breadcrumb";
 import { AsyncSection } from "~/components/ui/async-section";
 import { FundDetailHeavySkeleton } from "~/components/ui/skeletons";
-import { buildMeta, buildFundJsonLd, buildBreadcrumbJsonLd, buildFaqJsonLd } from "~/lib/seo";
+import { Skeleton } from "~/components/ui/skeleton";
+import { buildMeta } from "~/lib/seo";
 
-export function meta({ data }: Route.MetaArgs) {
-  // 404 时 data 为 undefined：直接输出 noindex 的简单 meta，
-  // 避免搜索引擎收录到"未知（未知）"这种垃圾 title
-  if (!data) {
+export function meta({ data, params }: Route.MetaArgs) {
+  // 同步从 loader 拿缓存命中状态，给不同情况发不同 SEO 默认值
+  // - "ok" / "unknown"：用 code 占位（客户端 useEffect 拿到真实数据后会动态覆盖 title/description）
+  // - "degraded"：服务端没数据，给"实时数据获取中"占位（不带具体字段名关键词，避免误导）
+  // - "notFound"：API 确认基金不存在，加 noindex 避免污染搜索索引
+  const code = params.code;
+  const status = data?.basicStatus ?? "unknown";
+
+  if (status === "notFound") {
     return buildMeta({
-      title: "基金未找到",
-      description: "该基金代码不存在或已下架。请返回首页使用搜索功能。",
-      path: "/fund/not-found",
+      title: "基金不存在",
+      description: `基金代码 ${code} 不存在或已下架。`,
+      path: `/fund/${code}`,
       noindex: true,
     });
   }
-  // loader 已 await getFundBasicData → basic 同步可用，SEO meta 仍能注入真实基金名
-  // heavy 是 Promise（meta 同步阶段无法解析），SEO 描述只引用 basic 字段
-  const { basic } = data as { basic: FundBasicData; heavy: Promise<FundHeavyData> };
 
-  const title = `${basic.name}（${basic.code}）`;
-  const description =
-    `${basic.name}（${basic.code}）详情：费率${basic.fee}，` +
-    `规模${basic.scale}，` +
-    `最新净值${basic.price}，` +
-    `昨日涨跌${basic.changePercent}%。净值走势、月度收益、重仓股实时行情一站查看。`;
+  if (status === "degraded") {
+    return buildMeta({
+      title: `${code} 基金详情 - 实时数据获取中`,
+      description: "基金数据获取中，页面使用占位信息。完整数据加载完成后会自动恢复。",
+      path: `/fund/${code}`,
+    });
+  }
 
   return buildMeta({
-    title,
-    description,
-    path: `/fund/${basic.code}`,
+    title: `基金 ${code} - ETF 基金详情`,
+    description: `基金代码 ${code} 的费率、规模、最新净值、昨日涨跌、净值走势、月度收益、重仓股等详情。`,
+    path: `/fund/${code}`,
     type: "article",
-    extra: [
-      buildFundJsonLd({ ...basic, path: `/fund/${basic.code}` } as never),
-      // 面包屑:首页 > QDII基金 > 当前基金
-      buildBreadcrumbJsonLd([
-        { name: "首页", path: "/" },
-        { name: "QDII基金", path: "/qdii" },
-        { name: basic.name, path: `/fund/${basic.code}` },
-      ]),
-      // FAQPage:基于基础信息生成,heavy 数据到达后会再补全
-      buildFaqJsonLd([
-        {
-          question: `${basic.name}（${basic.code}）是什么基金？`,
-          answer: `${basic.name}（基金代码 ${basic.code}）是一只场外基金，最新净值 ${basic.price}，管理费率 ${basic.fee}，基金规模 ${basic.scale}。`,
-        },
-      ]),
-    ],
   });
 }
 
 export async function loader({ params }: Route.LoaderArgs) {
-  // 基础信息走东方财富 datacenter API（单次 ~1s），同步 await 以保留 meta() 注入真实基金名的能力
-  const basic = await getFundBasicData(params.code);
-  // 兜底防护：name === code 视为无效（天天基金对不存在 code 仍返回 200 错误页）
-  if (!basic || basic.name === params.code) {
-    throw new Response("基金未找到", { status: 404 });
-  }
+  // 全部 defer：basic 和 heavy 都不 await → loader 同步返回，shell 立即出来
+  // 5min 缓存 + 4.5s 单源短超时仍在 getFundBasicData / getFundHeavyData 内部处理
+  // - dev 3s / prod 6s SSR 超时不再阻塞（loader 不 await）
+  // - 404 在 client 端判断 basic === null 渲染（HTTP 仍是 200，SEO 折中）
+  // - basicStatus 同步从缓存读（首次访问 = "unknown"），给 meta() 区分 SEO 默认值用
+  // - degraded 状态由上游 FundDetailWithRetry 处理：先保持 skeleton 再后台重试 3 次
   return {
-    basic,
-    // 重数据不 await → defer 走后台，组件用 <AsyncSection> 流式渲染
+    basic: getFundBasicData(params.code),
     heavy: getFundHeavyData(params.code),
+    basicStatus: peekFundBasicStatus(params.code),
   };
 }
 
 export default function FundDetail() {
   const { basic, heavy } = useLoaderData<typeof loader>();
+  // 客户端从 URL 拿 code，用于 404 视图（basic 失败时拿不到 fund.code）
+  const { code: urlCode } = useParams();
 
   return (
     <div className="min-h-screen bg-background">
-      <AppHeader currentLabel={basic.name} />
+      <AppHeader currentLabel="基金详情" />
       <main className="container mx-auto max-w-4xl px-3 py-6 sm:px-4">
-        {/* 面包屑：与 meta() 里的 BreadcrumbList JSON-LD 对齐 */}
-        <Breadcrumb
-          items={[
-            { name: "首页", path: "/" },
-            { name: "QDII基金", path: "/qdii" },
-            { name: basic.name },
-          ]}
-        />
-        {/* 基金标题 + 核心指标卡片（基于 basic,首屏即出） */}
-        <FadeIn className="mb-6 flex items-end justify-between" delay={0.1}>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold md:text-3xl">{basic.name}</h1>
-              <Badge variant="secondary" className="font-mono">
-                {basic.code}
-              </Badge>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">场外基金</p>
-          </div>
-          <ShareExport
-            module="fund-detail"
-            data={{ fund: basic } as never}
-            fileName={`fund-${basic.code}`}
-          />
-        </FadeIn>
-
-        {/* 重数据区（走势 / 业绩 / 重仓 / 净值）走 defer + Skeleton */}
-        <AsyncSection resolve={heavy} fallback={<FundDetailHeavySkeleton />}>
-          {(h) => <FundHeavyContent heavy={h as FundHeavyData} basic={basic} />}
+        {/* 整页内容走 defer：basic 到达前显示骨架；basic 失败（null）显示 404 视图；degraded 走 FundDetailWithRetry 后台重试 */}
+        <AsyncSection resolve={basic} fallback={<FundDetailPageSkeleton />}>
+          {(b) => {
+            const basicData = b as FundBasicData | null;
+            if (!basicData) {
+              return <FundNotFound code={urlCode ?? ""} />;
+            }
+            return (
+              <FundDetailWithRetry initialBasic={basicData} heavy={heavy} code={urlCode ?? ""} />
+            );
+          }}
         </AsyncSection>
-
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          数据仅供参考，不构成投资建议。
-        </p>
       </main>
     </div>
+  );
+}
+
+/** 整页骨架：标题 + heavy 骨架，避免 basic 拿到后跳变 */
+function FundDetailPageSkeleton() {
+  return (
+    <>
+      {/* 面包屑骨架 */}
+      <div className="mb-4 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span>首页</span>
+        <span>/</span>
+        <span>QDII基金</span>
+        <span>/</span>
+        <Skeleton className="h-3 w-12" />
+      </div>
+      {/* 标题 + 操作区骨架 */}
+      <div className="mb-6 flex items-end justify-between">
+        <div>
+          <Skeleton className="mb-2 h-7 w-48" />
+          <Skeleton className="h-3 w-24" />
+        </div>
+        <Skeleton className="h-8 w-24" />
+      </div>
+      <FundDetailHeavySkeleton />
+    </>
+  );
+}
+
+/** 基金不存在视图：API 确认返回 null 时渲染（HTTP 仍是 200） */
+function FundNotFound({ code }: { code: string }) {
+  return (
+    <div className="py-12 text-center">
+      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-muted">
+        <AlertTriangle className="size-6 text-muted-foreground" />
+      </div>
+      <h2 className="mb-2 text-2xl font-bold">基金不存在</h2>
+      <p className="mb-6 text-sm text-muted-foreground">
+        基金代码 {code || "未知"}不存在或已下架。
+      </p>
+      <a
+        href="/"
+        className="inline-block rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
+      >
+        返回首页
+      </a>
+    </div>
+  );
+}
+
+/**
+ * basic 数据可用但降级时的容器
+ *
+ * 触发场景：服务端/客户端首次 fetch 拿到的 basic.name === basic.code（占位数据）。
+ * 这意味着双源（东方财富 datacenter + 天天基金 HTML）都失败了，SSR 阶段走 degraded
+ * 兜底让页面不崩。但用户体验上：展示「占位信息」会让用户误以为基金就叫这串数字。
+ *
+ * 处理策略：
+ * 1. 保持整页骨架（FundDetailPageSkeleton），不让 degraded 数据污染用户视觉
+ * 2. 后台每 2s 重试一次（bypassCache=true），最多 3 次
+ * 3. 任一次重试拿到真实数据 → 切回 FundDetailContent 正常渲染
+ * 4. 重试用尽 → 切到 FundDataFailed 占位（N/A + 暂无数据 + 手动刷新按钮）
+ *
+ * 为什么不让 FundDetailContent 直接渲染 degraded 数据 + DegradedNotice：
+ * 用户明确要求「保持 skeleton」，且 degraded 数据（name=code、price=0）放在 SEO/UI
+ * 上都容易误导。直接用骨架覆盖，等价于「这次请求没成功」的诚实表达。
+ */
+const FUND_RETRY_MAX = 3;
+const FUND_RETRY_DELAY_MS = 2000;
+
+function FundDetailWithRetry({
+  initialBasic,
+  heavy,
+  code,
+}: {
+  initialBasic: FundBasicData;
+  heavy: Promise<FundHeavyData>;
+  code: string;
+}) {
+  const initiallyDegraded = initialBasic.name === initialBasic.code;
+
+  const [data, setData] = useState<FundBasicData>(initialBasic);
+  // 初始就是 degraded 的话立刻进入重试态；否则保持正常渲染
+  const [retrying, setRetrying] = useState(initiallyDegraded);
+  const [retryCount, setRetryCount] = useState(0);
+  const [givenUp, setGivenUp] = useState(false);
+
+  useEffect(() => {
+    if (!retrying) return;
+    if (retryCount >= FUND_RETRY_MAX) {
+      setGivenUp(true);
+      setRetrying(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const fresh = await getFundBasicData(code, { bypassCache: true });
+        if (cancelled) return;
+        if (fresh && fresh.name !== fresh.code) {
+          setData(fresh);
+          setRetrying(false);
+          return;
+        }
+      } catch {
+        // fetch 抛异常（极少：bypassCache 路径下 fetch 内部已经 try/catch 降级）
+      }
+      if (cancelled) return;
+      setRetryCount((c) => c + 1);
+    }, FUND_RETRY_DELAY_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [retrying, retryCount, code]);
+
+  if (givenUp) {
+    return <FundDataFailed code={code} />;
+  }
+
+  if (retrying) {
+    return <FundDetailPageSkeleton />;
+  }
+
+  return <FundDetailContent basic={data} heavy={heavy} />;
+}
+
+/**
+ * 重试 3 次后仍拿不到数据时的兜底视图
+ *
+ * 区别于 FundNotFound：这里是「基金确实存在但服务端一直拉不到数据」，不是 404。
+ * 不加 noindex（meta() 已经在 degraded 状态给了"实时数据获取中"占位 title，不影响 SEO）。
+ * 提供「刷新页面」按钮兜底用户主动重试入口。
+ */
+function FundDataFailed({ code }: { code: string }) {
+  return (
+    <div className="py-12 text-center">
+      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-muted">
+        <AlertTriangle className="size-6 text-muted-foreground" />
+      </div>
+      <h2 className="mb-2 text-2xl font-bold">数据获取失败</h2>
+      <p className="mb-1 text-sm text-muted-foreground">
+        基金代码 {code || "未知"} 的数据暂时无法获取。
+      </p>
+      <p className="mb-6 text-xs text-muted-foreground">
+        已自动重试 {FUND_RETRY_MAX} 次仍未恢复，请稍后再试或刷新页面。
+      </p>
+      <button
+        type="button"
+        onClick={() => {
+          if (typeof window !== "undefined") window.location.reload();
+        }}
+        className="inline-block rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
+      >
+        刷新页面
+      </button>
+    </div>
+  );
+}
+
+/** basic 拿到后的内容壳：含 useEffect 动态 title */
+function FundDetailContent({
+  basic,
+  heavy,
+}: {
+  basic: FundBasicData;
+  heavy: Promise<FundHeavyData>;
+}) {
+  // 客户端动态 title + meta description（覆盖 meta() 的 code 占位）
+  // 上游 FundDetailWithRetry 已过滤 degraded 数据，理论上 basic.name !== basic.code
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (basic.name === basic.code) return;
+    document.title = `${basic.name}（${basic.code}）- ETF 基金详情`;
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) {
+      metaDesc.setAttribute(
+        "content",
+        `${basic.name}（${basic.code}）详情：费率${basic.fee}，规模${basic.scale}，` +
+          `最新净值${basic.price}，昨日涨跌${basic.changePercent}%。` +
+          `净值走势、月度收益、重仓股实时行情一站查看。`,
+      );
+    }
+  }, [basic]);
+
+  return (
+    <>
+      <Breadcrumb
+        items={[
+          { name: "首页", path: "/" },
+          { name: "QDII基金", path: "/qdii" },
+          { name: basic.name },
+        ]}
+      />
+
+      <FadeIn className="mb-6 flex items-end justify-between" delay={0.1}>
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold md:text-3xl">{basic.name}</h1>
+            <Badge variant="secondary" className="font-mono">
+              {basic.code}
+            </Badge>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">场外基金</p>
+        </div>
+        <ShareExport
+          module="fund-detail"
+          data={{ fund: basic } as never}
+          fileName={`fund-${basic.code}`}
+        />
+      </FadeIn>
+
+      {/* 重数据区依然走 defer + Skeleton；不阻塞页面其余内容 */}
+      <AsyncSection resolve={heavy} fallback={<FundDetailHeavySkeleton />}>
+        {(h) => <FundHeavyContent heavy={h as FundHeavyData} basic={basic} />}
+      </AsyncSection>
+
+      <p className="mt-6 text-center text-xs text-muted-foreground">
+        数据仅供参考，不构成投资建议。
+      </p>
+    </>
   );
 }
 

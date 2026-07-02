@@ -28,31 +28,38 @@ interface CacheEntry<T> {
 
 const cache = new Map<string, CacheEntry<unknown>>();
 
-/** 通用缓存获取，默认缓存5分钟 */
+/** 通用缓存获取，默认缓存5分钟。bypassCache=true 时跳过缓存读，但仍会写新结果 */
 async function cachedFetch<T>(
   key: string,
   fetcher: () => Promise<T>,
   ttlMs = 5 * 60 * 1000,
+  opts: { bypassCache?: boolean } = {},
 ): Promise<T> {
-  const entry = cache.get(key);
-  if (entry && Date.now() - entry.timestamp < ttlMs) {
-    return entry.data as T;
+  if (!opts.bypassCache) {
+    const entry = cache.get(key);
+    if (entry && Date.now() - entry.timestamp < ttlMs) {
+      return entry.data as T;
+    }
   }
   const data = await fetcher();
   cache.set(key, { data, timestamp: Date.now() });
   return data;
 }
 
-/** 通用 fetch 封装，带超时 */
-async function fetchText(url: string, init?: RequestInit): Promise<string> {
+/** 通用 fetch 封装，带超时。init.timeoutMs 可覆盖默认 15s（用于需要更短超时的关键路径） */
+async function fetchText(
+  url: string,
+  init?: RequestInit & { timeoutMs?: number },
+): Promise<string> {
+  const { timeoutMs, ...rest } = init ?? {};
   const res = await fetch(url, {
-    ...init,
+    ...rest,
     headers: {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-      ...(init?.headers as Record<string, string>),
+      ...(rest.headers as Record<string, string>),
     },
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(timeoutMs ?? 15_000),
   });
   if (!res.ok) {
     throw new Error(`fetch ${url} failed: ${res.status}`);
@@ -78,8 +85,8 @@ async function fetchTextGBK(url: string, init?: RequestInit): Promise<string> {
   return new TextDecoder("gbk").decode(buffer);
 }
 
-/** 通用 fetchJson 封装 */
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+/** 通用 fetchJson 封装，timeoutMs 透传给 fetchText */
+async function fetchJson<T>(url: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
   const text = await fetchText(url, {
     ...init,
     headers: {
@@ -723,63 +730,129 @@ function isInvalidFundBasic(basic: FundBasicData | null, code: string): boolean 
 }
 
 /**
- * 获取基金基础信息（首屏快路径）
- * - 走一次东方财富 datacenter API；失败降级到天天基金 HTML 抓取
- * - 单次请求，1s 内完成；用于 SEO meta() 同步取与首屏基础卡片
+ * 降级基金基础信息（双源网络都失败时使用，name 用 code 占位让 loader 继续渲染）
+ * - 重数据由 getFundHeavyData 独立获取，仍可能命中 10min 缓存拿到真实数据
+ * - 组件可据此判断显示「数据获取失败」提示
  */
-export async function getFundBasicData(code: string): Promise<FundBasicData | null> {
-  // 优先：东方财富 datacenter API
-  try {
-    const rankData = await fetchJson<FundRankResponse>(
-      `https://datacenter-web.eastmoney.com/api/data/v1/get?reportName=RPT_FUND_RANK&columns=SECURITY_CODE,FUND_NAME,FUND_SCALE,CHANGE_YEAR,CHANGE,PER_NAV,NAV_DATE,APPLY_RATE&filter=(SECURITY_CODE="${code}")&pageNumber=1&pageSize=1`,
-      { headers: { Referer: "https://fund.eastmoney.com/" } },
-    );
-    const items = rankData?.result?.data ?? [];
-    if (items.length > 0) {
-      const item = items[0];
-      const rawScale = numVal(item.FUND_SCALE);
-      const basic: FundBasicData = {
-        code: strVal(item.SECURITY_CODE),
-        name: strVal(item.FUND_NAME),
-        index: "—",
-        premium: 0,
-        price: numVal(item.PER_NAV, -999) === -999 ? 0 : numVal(item.PER_NAV),
-        changePercent: numVal(item.CHANGE, -999) === -999 ? 0 : numVal(item.CHANGE),
-        scale: rawScale > 0 ? `${Math.round((rawScale / 1e8) * 10) / 10}亿` : "—",
-        fee: numVal(item.APPLY_RATE, -999) === -999 ? "—" : `${numVal(item.APPLY_RATE)}%`,
-      };
-      if (!isInvalidFundBasic(basic, code)) return basic;
-    }
-  } catch {
-    // 东方财富 datacenter 失败，降级到天天基金页面
-  }
+function makeDegradedBasic(code: string): FundBasicData {
+  return {
+    code,
+    name: code,
+    index: "—",
+    premium: 0,
+    price: 0,
+    changePercent: 0,
+    scale: "—",
+    fee: "—",
+  };
+}
 
-  // 降级：天天基金页面
-  try {
-    const html = await fetchText(`https://fund.eastmoney.com/${code}.html`, {
-      headers: { Referer: "https://fund.eastmoney.com/" },
-    });
-    const nameMatch = html.match(/<span[^>]*class="funCur-FundName"[^>]*>([^<]+)/);
-    const priceMatch = html.match(/最新净值[^<]*<[^>]*>([\d.]+)/);
-    const changeMatch = html.match(/涨跌幅[^<]*<[^>]*>([+-]?[\d.]+)%/);
-    const scaleMatch = html.match(/基金规模[^<]*<[^>]*>([\d.]+)亿/);
+/** basic 路径的统一短超时（< SSR streamTimeout 6s，预留 cold start 余量） */
+const BASIC_FETCH_TIMEOUT_MS = 4_500;
 
-    const basic: FundBasicData = {
-      code,
-      name: nameMatch?.[1]?.trim() ?? code,
-      index: "—",
-      premium: 0,
-      price: priceMatch ? parseFloat(priceMatch[1]) || 0 : 0,
-      changePercent: changeMatch ? parseFloat(changeMatch[1]) || 0 : 0,
-      scale: scaleMatch ? `${scaleMatch[1]}亿` : "—",
-      fee: "—",
-    };
-    if (!isInvalidFundBasic(basic, code)) return basic;
-  } catch {
-    // 天天基金也失败
-  }
+/**
+ * 获取基金基础信息（首屏快路径）
+ * - 走东方财富 datacenter API；失败降级到天天基金 HTML 抓取；双源都失败时返回降级数据
+ * - 加 5min 内存缓存 + 单源 4.5s 短超时，避免在 SSR 6s 流式窗口内超时被 abort
+ * - opts.bypassCache=true：跳过缓存读（但仍会写新结果），用于客户端后台重试
+ * - 用于 SEO meta() 同步取与首屏基础卡片
+ */
+export async function getFundBasicData(
+  code: string,
+  opts: { bypassCache?: boolean } = {},
+): Promise<FundBasicData | null> {
+  return cachedFetch(
+    `fund-basic-${code}`,
+    async () => {
+      // 优先：东方财富 datacenter API（短超时，避免单源慢拖累 SSR）
+      try {
+        const rankData = await fetchJson<FundRankResponse>(
+          `https://datacenter-web.eastmoney.com/api/data/v1/get?reportName=RPT_FUND_RANK&columns=SECURITY_CODE,FUND_NAME,FUND_SCALE,CHANGE_YEAR,CHANGE,PER_NAV,NAV_DATE,APPLY_RATE&filter=(SECURITY_CODE="${code}")&pageNumber=1&pageSize=1`,
+          {
+            headers: { Referer: "https://fund.eastmoney.com/" },
+            timeoutMs: BASIC_FETCH_TIMEOUT_MS,
+          },
+        );
+        const items = rankData?.result?.data ?? [];
+        if (items.length > 0) {
+          const item = items[0];
+          const rawScale = numVal(item.FUND_SCALE);
+          const basic: FundBasicData = {
+            code: strVal(item.SECURITY_CODE),
+            name: strVal(item.FUND_NAME),
+            index: "—",
+            premium: 0,
+            price: numVal(item.PER_NAV, -999) === -999 ? 0 : numVal(item.PER_NAV),
+            changePercent: numVal(item.CHANGE, -999) === -999 ? 0 : numVal(item.CHANGE),
+            scale: rawScale > 0 ? `${Math.round((rawScale / 1e8) * 10) / 10}亿` : "—",
+            fee: numVal(item.APPLY_RATE, -999) === -999 ? "—" : `${numVal(item.APPLY_RATE)}%`,
+          };
+          if (isInvalidFundBasic(basic, code)) return null;
+          return basic;
+        }
+        // 空数据：API 已确认不存在
+        return null;
+      } catch {
+        // 东方财富 datacenter 失败，降级到天天基金页面
+      }
 
-  return null;
+      // 降级：天天基金页面
+      try {
+        const html = await fetchText(`https://fund.eastmoney.com/${code}.html`, {
+          headers: { Referer: "https://fund.eastmoney.com/" },
+          timeoutMs: BASIC_FETCH_TIMEOUT_MS,
+        });
+        const nameMatch = html.match(/<span[^>]*class="funCur-FundName"[^>]*>([^<]+)/);
+        const priceMatch = html.match(/最新净值[^<]*<[^>]*>([\d.]+)/);
+        const changeMatch = html.match(/涨跌幅[^<]*<[^>]*>([+-]?[\d.]+)%/);
+        const scaleMatch = html.match(/基金规模[^<]*<[^>]*>([\d.]+)亿/);
+
+        const basic: FundBasicData = {
+          code,
+          name: nameMatch?.[1]?.trim() ?? code,
+          index: "—",
+          premium: 0,
+          price: priceMatch ? parseFloat(priceMatch[1]) || 0 : 0,
+          changePercent: changeMatch ? parseFloat(changeMatch[1]) || 0 : 0,
+          scale: scaleMatch ? `${scaleMatch[1]}亿` : "—",
+          fee: "—",
+        };
+        if (isInvalidFundBasic(basic, code)) return null;
+        return basic;
+      } catch {
+        // 天天基金也失败
+      }
+
+      // 双源都失败：返回降级数据（name=code），让 loader 继续渲染而不是 404
+      // 5min 缓存同样吸收，让突发网络问题不会重复打源站
+      return makeDegradedBasic(code);
+    },
+    5 * 60 * 1000,
+    { bypassCache: opts.bypassCache },
+  );
+}
+
+/** 同步读取的基金基础数据状态（meta() 阶段使用） */
+export type FundBasicStatus = "ok" | "degraded" | "notFound" | "unknown";
+
+/**
+ * 同步从内存缓存中读取基金基础数据状态（不发请求）
+ * - "ok"：上次访问拿到真实数据（name !== code）
+ * - "degraded"：上次访问网络全失败，缓存的是占位数据
+ * - "notFound"：上次访问 API 确认基金不存在
+ * - "unknown"：首次访问 / 缓存未命中（meta 用最保守的占位）
+ *
+ * 使用场景：meta() 阶段需要根据数据可用性给出不同的 SEO 默认值。
+ * loader 同步调用本函数把 status 塞到 data，meta() 再根据 status 路由。
+ */
+export function peekFundBasicStatus(code: string): FundBasicStatus {
+  const entry = cache.get(`fund-basic-${code}`);
+  if (!entry) return "unknown";
+  const data = entry.data;
+  if (data === null || data === undefined) return "notFound";
+  const basic = data as FundBasicData;
+  if (basic.name === basic.code) return "degraded";
+  return "ok";
 }
 
 /**
@@ -787,241 +860,259 @@ export async function getFundBasicData(code: string): Promise<FundBasicData | nu
  * - 走 pingzhongdata + 净值 API + 重仓 + 盘中估值等多源
  * - 单次响应可能 1-3s，配合 defer 在后台异步加载
  * - 命中即用 10min 内存缓存
+ * - opts.bypassCache=true：跳过缓存读（但仍会写新结果），用于客户端后台重试
+ *
+ * 注意：本函数本身有兜底默认值（任一源失败 → 空数组/null），不会 reject；
+ * 「重试」语义上主要是想重新打一次外部源看能不能拉回真实数据。失败时 UI 由
+ * 重数据卡片内「暂无数据」占位兜住，不阻塞页面。
  */
-export async function getFundHeavyData(code: string): Promise<FundHeavyData> {
-  return cachedFetch(`fund-heavy-${code}`, async () => {
-    // 默认值（任一数据源失败时落到这里）
-    const result: FundHeavyData = {
-      performance: {
-        oneMonth: null,
-        threeMonth: null,
-        sixMonth: null,
-        oneYear: null,
-        threeYear: null,
-        sinceInception: null,
-      },
-      navTrend: [],
-      topHoldings: [],
-      navHistory: [],
-      maxDrawdown: null,
-      monthlyReturns: [],
-      managers: [],
-      sourceRate: null,
-      manageRate: null,
-      minPurchase: null,
-      realTime估值: null,
-      dcaOneYear: null,
-      dcaThreeYear: null,
-    };
-
-    // 并行：pingzhongdata + 历史净值 + 经理接口 + 盘中估值
-    const [pingzhongText, navHistoryData, managerData, fundgzText] = await Promise.all([
-      fetchText(`https://fund.eastmoney.com/pingzhongdata/${code}.js`, {
-        headers: { Referer: "https://fund.eastmoney.com/" },
-      }).catch(() => ""),
-      fetchJson<{
-        Data?: { LSJZList?: Array<{ FSRQ: string; DWJZ: string; LJJZ: string; JZZZL: string }> };
-        TotalCount?: number;
-      }>(`https://api.fund.eastmoney.com/f10/lsjz?fundCode=${code}&pageIndex=1&pageSize=30`, {
-        headers: { Referer: "https://fundf10.eastmoney.com/" },
-      }).catch(() => ({}) as Record<string, unknown>),
-      // 经理接口（FundArchivesDatas）
-      fetchJson<{
-        Data?: Array<{ jjjl?: string; rzrq?: string; jlr?: string }>;
-      }>(
-        `https://fund.eastmoney.com/FundArchivesDatas.aspx?type=jjjl&code=${code}&rt=0.${Date.now()}`,
-        { headers: { Referer: "https://fundf10.eastmoney.com/" } },
-      ).catch(() => ({}) as Record<string, unknown>),
-      // 盘中实时估值
-      fetchText(`http://fundgz.1234567.com.cn/js/${code}.js`, {
-        headers: { Referer: "http://fund.eastmoney.com/" },
-      }).catch(() => ""),
-    ]);
-
-    // 解析 pingzhongdata
-    if (pingzhongText) {
-      // 阶段涨幅
-      const syl1n = extractJsVar(pingzhongText, "syl_1n");
-      const syl6y = extractJsVar(pingzhongText, "syl_6y");
-      const syl3y = extractJsVar(pingzhongText, "syl_3y");
-      const syl1y = extractJsVar(pingzhongText, "syl_1y");
-      const syl3n = extractJsVar(pingzhongText, "syl_3n");
-      const sylCl = extractJsVar(pingzhongText, "syl_cl");
-      result.performance = {
-        oneMonth: syl1y ? parseFloat(syl1y) : null,
-        threeMonth: syl3y ? parseFloat(syl3y) : null,
-        sixMonth: syl6y ? parseFloat(syl6y) : null,
-        oneYear: syl1n ? parseFloat(syl1n) : null,
-        threeYear: syl3n ? parseFloat(syl3n) : null,
-        sinceInception: sylCl ? parseFloat(sylCl) : null,
+export async function getFundHeavyData(
+  code: string,
+  opts: { bypassCache?: boolean } = {},
+): Promise<FundHeavyData> {
+  return cachedFetch(
+    `fund-heavy-${code}`,
+    async () => {
+      // 默认值（任一数据源失败时落到这里）
+      const result: FundHeavyData = {
+        performance: {
+          oneMonth: null,
+          threeMonth: null,
+          sixMonth: null,
+          oneYear: null,
+          threeYear: null,
+          sinceInception: null,
+        },
+        navTrend: [],
+        topHoldings: [],
+        navHistory: [],
+        maxDrawdown: null,
+        monthlyReturns: [],
+        managers: [],
+        sourceRate: null,
+        manageRate: null,
+        minPurchase: null,
+        realTime估值: null,
+        dcaOneYear: null,
+        dcaThreeYear: null,
       };
 
-      // 费率
-      result.sourceRate = extractJsVar(pingzhongText, "fund_sourceRate");
-      result.manageRate = extractJsVar(pingzhongText, "fund_Rate");
-      result.minPurchase = extractJsVar(pingzhongText, "fund_minsg");
+      // 并行：pingzhongdata + 历史净值 + 经理接口 + 盘中估值
+      const [pingzhongText, navHistoryData, managerData, fundgzText] = await Promise.all([
+        fetchText(`https://fund.eastmoney.com/pingzhongdata/${code}.js`, {
+          headers: { Referer: "https://fund.eastmoney.com/" },
+        }).catch(() => ""),
+        fetchJson<{
+          Data?: { LSJZList?: Array<{ FSRQ: string; DWJZ: string; LJJZ: string; JZZZL: string }> };
+          TotalCount?: number;
+        }>(`https://api.fund.eastmoney.com/f10/lsjz?fundCode=${code}&pageIndex=1&pageSize=30`, {
+          headers: { Referer: "https://fundf10.eastmoney.com/" },
+        }).catch(() => ({}) as Record<string, unknown>),
+        // 经理接口（FundArchivesDatas）
+        fetchJson<{
+          Data?: Array<{ jjjl?: string; rzrq?: string; jlr?: string }>;
+        }>(
+          `https://fund.eastmoney.com/FundArchivesDatas.aspx?type=jjjl&code=${code}&rt=0.${Date.now()}`,
+          { headers: { Referer: "https://fundf10.eastmoney.com/" } },
+        ).catch(() => ({}) as Record<string, unknown>),
+        // 盘中实时估值
+        fetchText(`http://fundgz.1234567.com.cn/js/${code}.js`, {
+          headers: { Referer: "http://fund.eastmoney.com/" },
+        }).catch(() => ""),
+      ]);
 
-      // 净值走势
-      const navData = extractJsArray<{ x: number; y: number; equityReturn: number }>(
-        pingzhongText,
-        "Data_netWorthTrend",
-      );
-      if (navData) {
+      // 解析 pingzhongdata
+      if (pingzhongText) {
+        // 阶段涨幅
+        const syl1n = extractJsVar(pingzhongText, "syl_1n");
+        const syl6y = extractJsVar(pingzhongText, "syl_6y");
+        const syl3y = extractJsVar(pingzhongText, "syl_3y");
+        const syl1y = extractJsVar(pingzhongText, "syl_1y");
+        const syl3n = extractJsVar(pingzhongText, "syl_3n");
+        const sylCl = extractJsVar(pingzhongText, "syl_cl");
+        result.performance = {
+          oneMonth: syl1y ? parseFloat(syl1y) : null,
+          threeMonth: syl3y ? parseFloat(syl3y) : null,
+          sixMonth: syl6y ? parseFloat(syl6y) : null,
+          oneYear: syl1n ? parseFloat(syl1n) : null,
+          threeYear: syl3n ? parseFloat(syl3n) : null,
+          sinceInception: sylCl ? parseFloat(sylCl) : null,
+        };
+
+        // 费率
+        result.sourceRate = extractJsVar(pingzhongText, "fund_sourceRate");
+        result.manageRate = extractJsVar(pingzhongText, "fund_Rate");
+        result.minPurchase = extractJsVar(pingzhongText, "fund_minsg");
+
+        // 净值走势
+        const navData = extractJsArray<{ x: number; y: number; equityReturn: number }>(
+          pingzhongText,
+          "Data_netWorthTrend",
+        );
+        if (navData) {
+          try {
+            result.navTrend = navData.map((d) => ({
+              date: new Date(d.x).toISOString().split("T")[0],
+              nav: d.y,
+              dailyReturn: d.equityReturn ?? 0,
+            }));
+            result.maxDrawdown = calcMaxDrawdown(result.navTrend.map((d) => d.nav));
+            result.monthlyReturns = calcMonthlyReturns(navData);
+            result.dcaOneYear = calcDCAReturn(navData, 12);
+            result.dcaThreeYear = calcDCAReturn(navData, 36);
+          } catch {
+            // 解析失败
+          }
+        }
+
+        // 重仓股代码
+        const stockCodes = extractJsArray<string>(pingzhongText, "stockCodes");
+        if (stockCodes) {
+          const symbols = stockCodes
+            .map((s) => s.replace(/\d+$/, ""))
+            .filter((s) => s.length > 0)
+            .slice(0, 10);
+
+          const holdingMap = new Map<string, number>();
+          try {
+            const holdingText = await fetchText(
+              `https://fund.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${code}&topline=10&year=&month=&rt=0.${Date.now()}`,
+              { headers: { Referer: "https://fundf10.eastmoney.com/" } },
+            ).catch(() => "");
+            if (holdingText) {
+              const ratioMatches = [
+                ...holdingText.matchAll(/class='(?:tor|tol)'>\s*([\d.]+)%\s*<\/td>/g),
+              ];
+              const codeMatches = [...holdingText.matchAll(/code=(\w+)[&"']/g)];
+              for (let i = 0; i < Math.min(codeMatches.length, ratioMatches.length); i++) {
+                holdingMap.set(
+                  codeMatches[i][1].toUpperCase(),
+                  parseFloat(ratioMatches[i][1]) || 0,
+                );
+              }
+            }
+          } catch {
+            // 忽略
+          }
+
+          if (symbols.length > 0) {
+            const sinaCodes = symbols.map((s) => `gb_${s.toLowerCase()}`).join(",");
+            const stockText = await fetchTextGBK(`http://hq.sinajs.cn/list=${sinaCodes}`, {
+              headers: { Referer: "http://finance.sina.com.cn/" },
+            }).catch(() => "");
+
+            if (stockText) {
+              const lines = stockText.split("\n").filter((l) => l.trim());
+              for (const line of lines) {
+                const m = line.match(/var hq_str_gb_(\w+)="([^"]*)"/);
+                if (m && m[2]) {
+                  const parts = m[2].split(",");
+                  const sym = m[1].toUpperCase();
+                  result.topHoldings.push({
+                    symbol: sym,
+                    name: parts[0] || sym,
+                    price: parseFloat(parts[1]) || 0,
+                    changePercent: parseFloat(parts[22]) || 0,
+                    holdingRatio: holdingMap.get(sym) || 0,
+                  });
+                }
+              }
+            }
+          }
+        }
+
+        // 解析盘中实时估值
+        if (fundgzText) {
+          try {
+            const jsonMatch = fundgzText.match(/jsonpgz\((.*)\);?/);
+            if (jsonMatch) {
+              const data = JSON.parse(jsonMatch[1]);
+              result.realTime估值 = {
+                gsz: parseFloat(data.gsz) || 0,
+                gszzl: parseFloat(data.gszzl) || 0,
+                gztime: data.gztime || "",
+              };
+            }
+          } catch {
+            // 估值解析失败
+          }
+        }
+      } else {
+        // pingzhongdata 失败：天天基金 F10DataApi 降级
         try {
-          result.navTrend = navData.map((d) => ({
-            date: new Date(d.x).toISOString().split("T")[0],
-            nav: d.y,
-            dailyReturn: d.equityReturn ?? 0,
-          }));
-          result.maxDrawdown = calcMaxDrawdown(result.navTrend.map((d) => d.nav));
-          result.monthlyReturns = calcMonthlyReturns(navData);
-          result.dcaOneYear = calcDCAReturn(navData, 12);
-          result.dcaThreeYear = calcDCAReturn(navData, 36);
+          const f10Text = await fetchText(
+            `https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=${code}&page=1&per=30`,
+            { headers: { Referer: "https://fund.eastmoney.com/" } },
+          );
+          const contentMatch = f10Text.match(/content:"(<table[\s\S]*?<\/table>)"/);
+          if (contentMatch) {
+            const rows = [...contentMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)];
+            for (const row of rows) {
+              const cells = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)];
+              if (cells.length >= 4) {
+                const date = cells[0][1].replace(/<[^>]+>/g, "").trim();
+                const nav = cells[1][1].replace(/<[^>]+>/g, "").trim();
+                const accNav = cells[2][1].replace(/<[^>]+>/g, "").trim();
+                const dailyGrowth = cells[3][1].replace(/<[^>]+>/g, "").trim();
+                result.navHistory.push({ date, nav, accNav, dailyGrowth });
+                const navVal = parseFloat(nav);
+                if (navVal > 0) {
+                  result.navTrend.push({
+                    date,
+                    nav: navVal,
+                    dailyReturn: parseFloat(dailyGrowth) || 0,
+                  });
+                }
+              }
+            }
+            if (result.navTrend.length >= 2) {
+              result.maxDrawdown = calcMaxDrawdown(result.navTrend.map((d) => d.nav));
+            }
+          }
+        } catch {
+          // 天天基金 F10DataApi 也失败
+        }
+      }
+
+      // 历史净值（东方财富 lsjz API 优先）
+      const navData = navHistoryData as {
+        Data?: { LSJZList?: Array<{ FSRQ: string; DWJZ: string; LJJZ: string; JZZZL: string }> };
+      };
+      if (navData?.Data?.LSJZList && navData.Data.LSJZList.length > 0) {
+        result.navHistory = navData.Data.LSJZList.map((d) => ({
+          date: d.FSRQ,
+          nav: d.DWJZ,
+          accNav: d.LJJZ,
+          dailyGrowth: d.JZZZL,
+        }));
+      } else if (result.navHistory.length === 0) {
+        // 降级：天天基金 F10DataApi（已在上方尝试过）
+      }
+
+      // 解析基金经理
+      const mgrData = managerData as {
+        Data?: Array<{ jjjl?: string; rzrq?: string; jlr?: string }>;
+      };
+      if (mgrData?.Data && Array.isArray(mgrData.Data)) {
+        try {
+          for (const m of mgrData.Data) {
+            if (!m.jjjl) continue;
+            result.managers.push({
+              name: m.jjjl.trim(),
+              tenure: m.rzrq ?? "—",
+              tenureReturn: m.jlr ? parseFloat(m.jlr) : null,
+            });
+          }
         } catch {
           // 解析失败
         }
       }
 
-      // 重仓股代码
-      const stockCodes = extractJsArray<string>(pingzhongText, "stockCodes");
-      if (stockCodes) {
-        const symbols = stockCodes
-          .map((s) => s.replace(/\d+$/, ""))
-          .filter((s) => s.length > 0)
-          .slice(0, 10);
-
-        const holdingMap = new Map<string, number>();
-        try {
-          const holdingText = await fetchText(
-            `https://fund.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${code}&topline=10&year=&month=&rt=0.${Date.now()}`,
-            { headers: { Referer: "https://fundf10.eastmoney.com/" } },
-          ).catch(() => "");
-          if (holdingText) {
-            const ratioMatches = [
-              ...holdingText.matchAll(/class='(?:tor|tol)'>\s*([\d.]+)%\s*<\/td>/g),
-            ];
-            const codeMatches = [...holdingText.matchAll(/code=(\w+)[&"']/g)];
-            for (let i = 0; i < Math.min(codeMatches.length, ratioMatches.length); i++) {
-              holdingMap.set(codeMatches[i][1].toUpperCase(), parseFloat(ratioMatches[i][1]) || 0);
-            }
-          }
-        } catch {
-          // 忽略
-        }
-
-        if (symbols.length > 0) {
-          const sinaCodes = symbols.map((s) => `gb_${s.toLowerCase()}`).join(",");
-          const stockText = await fetchTextGBK(`http://hq.sinajs.cn/list=${sinaCodes}`, {
-            headers: { Referer: "http://finance.sina.com.cn/" },
-          }).catch(() => "");
-
-          if (stockText) {
-            const lines = stockText.split("\n").filter((l) => l.trim());
-            for (const line of lines) {
-              const m = line.match(/var hq_str_gb_(\w+)="([^"]*)"/);
-              if (m && m[2]) {
-                const parts = m[2].split(",");
-                const sym = m[1].toUpperCase();
-                result.topHoldings.push({
-                  symbol: sym,
-                  name: parts[0] || sym,
-                  price: parseFloat(parts[1]) || 0,
-                  changePercent: parseFloat(parts[22]) || 0,
-                  holdingRatio: holdingMap.get(sym) || 0,
-                });
-              }
-            }
-          }
-        }
-      }
-
-      // 解析盘中实时估值
-      if (fundgzText) {
-        try {
-          const jsonMatch = fundgzText.match(/jsonpgz\((.*)\);?/);
-          if (jsonMatch) {
-            const data = JSON.parse(jsonMatch[1]);
-            result.realTime估值 = {
-              gsz: parseFloat(data.gsz) || 0,
-              gszzl: parseFloat(data.gszzl) || 0,
-              gztime: data.gztime || "",
-            };
-          }
-        } catch {
-          // 估值解析失败
-        }
-      }
-    } else {
-      // pingzhongdata 失败：天天基金 F10DataApi 降级
-      try {
-        const f10Text = await fetchText(
-          `https://fund.eastmoney.com/f10/F10DataApi.aspx?type=lsjz&code=${code}&page=1&per=30`,
-          { headers: { Referer: "https://fund.eastmoney.com/" } },
-        );
-        const contentMatch = f10Text.match(/content:"(<table[\s\S]*?<\/table>)"/);
-        if (contentMatch) {
-          const rows = [...contentMatch[1].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)];
-          for (const row of rows) {
-            const cells = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)];
-            if (cells.length >= 4) {
-              const date = cells[0][1].replace(/<[^>]+>/g, "").trim();
-              const nav = cells[1][1].replace(/<[^>]+>/g, "").trim();
-              const accNav = cells[2][1].replace(/<[^>]+>/g, "").trim();
-              const dailyGrowth = cells[3][1].replace(/<[^>]+>/g, "").trim();
-              result.navHistory.push({ date, nav, accNav, dailyGrowth });
-              const navVal = parseFloat(nav);
-              if (navVal > 0) {
-                result.navTrend.push({
-                  date,
-                  nav: navVal,
-                  dailyReturn: parseFloat(dailyGrowth) || 0,
-                });
-              }
-            }
-          }
-          if (result.navTrend.length >= 2) {
-            result.maxDrawdown = calcMaxDrawdown(result.navTrend.map((d) => d.nav));
-          }
-        }
-      } catch {
-        // 天天基金 F10DataApi 也失败
-      }
-    }
-
-    // 历史净值（东方财富 lsjz API 优先）
-    const navData = navHistoryData as {
-      Data?: { LSJZList?: Array<{ FSRQ: string; DWJZ: string; LJJZ: string; JZZZL: string }> };
-    };
-    if (navData?.Data?.LSJZList && navData.Data.LSJZList.length > 0) {
-      result.navHistory = navData.Data.LSJZList.map((d) => ({
-        date: d.FSRQ,
-        nav: d.DWJZ,
-        accNav: d.LJJZ,
-        dailyGrowth: d.JZZZL,
-      }));
-    } else if (result.navHistory.length === 0) {
-      // 降级：天天基金 F10DataApi（已在上方尝试过）
-    }
-
-    // 解析基金经理
-    const mgrData = managerData as { Data?: Array<{ jjjl?: string; rzrq?: string; jlr?: string }> };
-    if (mgrData?.Data && Array.isArray(mgrData.Data)) {
-      try {
-        for (const m of mgrData.Data) {
-          if (!m.jjjl) continue;
-          result.managers.push({
-            name: m.jjjl.trim(),
-            tenure: m.rzrq ?? "—",
-            tenureReturn: m.jlr ? parseFloat(m.jlr) : null,
-          });
-        }
-      } catch {
-        // 解析失败
-      }
-    }
-
-    return result;
-  });
+      return result;
+    },
+    5 * 60 * 1000,
+    { bypassCache: opts.bypassCache },
+  );
 }
 
 /**
