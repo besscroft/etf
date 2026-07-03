@@ -1,6 +1,6 @@
 import { Await, useLoaderData } from "react-router";
 import { AppLink as Link } from "~/components/ui/link";
-import { Suspense, useState, useMemo } from "react";
+import { Suspense, useState } from "react";
 import { Card, CardContent } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -8,7 +8,6 @@ import { FadeIn } from "~/components/motion";
 import { motion, AnimatePresence } from "motion/react";
 import { buildMeta } from "~/lib/seo";
 import {
-  ArrowLeft,
   BarChart3,
   ArrowUpDown,
   ChevronUp,
@@ -24,6 +23,7 @@ import { DURATION, EASING } from "~/lib/motion";
 import { ShareExport } from "~/components/share-export";
 import { AppHeader } from "~/components/app-header";
 import { FundListTableSkeleton } from "~/components/ui/skeletons";
+import { HoldingsPieChart } from "~/components/charts";
 
 export function meta() {
   return buildMeta({
@@ -175,6 +175,23 @@ export default function QDII() {
                 const activeCount = funds.filter((f) => f.category === "active").length;
                 const openCount = funds.filter((f) => f.purchaseStatus !== "暂停").length;
                 const suspendedCount = funds.filter((f) => f.purchaseStatus === "暂停").length;
+                const categoryAllocation = [
+                  {
+                    symbol: "nasdaq100",
+                    name: `纳指100 (${nasdaqCount})`,
+                    holdingRatio: funds.length ? (nasdaqCount / funds.length) * 100 : 0,
+                  },
+                  {
+                    symbol: "sp500",
+                    name: `标普500 (${sp500Count})`,
+                    holdingRatio: funds.length ? (sp500Count / funds.length) * 100 : 0,
+                  },
+                  {
+                    symbol: "active",
+                    name: `主动型 (${activeCount})`,
+                    holdingRatio: funds.length ? (activeCount / funds.length) * 100 : 0,
+                  },
+                ];
                 return (
                   <>
                     <FadeIn className="mb-3 flex items-center gap-2" delay={0.15}>
@@ -226,6 +243,18 @@ export default function QDII() {
                           </motion.button>
                         ))}
                       </div>
+                    </FadeIn>
+
+                    <FadeIn className="mb-4" delay={0.19}>
+                      <Card>
+                        <CardContent className="pt-4">
+                          <HoldingsPieChart
+                            holdings={categoryAllocation}
+                            height={220}
+                            onDrilldown={(item) => setFilterCategory(item.symbol as FilterCategory)}
+                          />
+                        </CardContent>
+                      </Card>
                     </FadeIn>
                   </>
                 );

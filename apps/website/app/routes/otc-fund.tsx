@@ -1,11 +1,9 @@
 import type { Route } from "./+types/otc-fund";
 import { Await, useLoaderData, useSearchParams } from "react-router";
-import { AppLink as Link } from "~/components/ui/link";
 import { Suspense, useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { FadeIn } from "~/components/motion";
 import { buildMeta } from "~/lib/seo";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -32,13 +30,13 @@ import {
   OTC_CATEGORY_LABELS,
   OTC_CATEGORY_ORDER,
   type OTCCategory,
-  type OTCClassifiedFundData,
   type FundDetailData,
 } from "~/lib/market-data";
 import { DURATION, EASING } from "~/lib/motion";
 import { ShareExport } from "~/components/share-export";
 import { AppHeader } from "~/components/app-header";
 import { FundDetailPanelSkeleton } from "~/components/ui/skeletons";
+import { FundNavTrendChart, HoldingsPieChart } from "~/components/charts";
 
 export function meta() {
   return buildMeta({
@@ -472,7 +470,7 @@ function AnalysisContent({ fund }: { fund: FundDetailData }) {
         </CardHeader>
         <CardContent>
           {fund.navTrend.length > 1 ? (
-            <NavTrendChart data={fund.navTrend} />
+            <FundNavTrendChart data={fund.navTrend} />
           ) : (
             <p className="text-center text-sm text-muted-foreground">暂无净值走势数据</p>
           )}
@@ -565,7 +563,8 @@ function AnalysisContent({ fund }: { fund: FundDetailData }) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2 md:hidden">
+            <HoldingsPieChart holdings={fund.topHoldings} />
+            <div className="mt-4 space-y-2 md:hidden">
               {fund.topHoldings.map((stock) => (
                 <div key={stock.symbol} className="min-h-16 rounded-md border p-2.5">
                   <div className="flex items-center justify-between gap-2">
@@ -603,7 +602,7 @@ function AnalysisContent({ fund }: { fund: FundDetailData }) {
                 </div>
               ))}
             </div>
-            <div className="hidden overflow-x-auto md:block">
+            <div className="mt-4 hidden overflow-x-auto md:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-xs text-muted-foreground">
@@ -776,243 +775,6 @@ function PerformanceCard({ label, value }: { label: string; value: number | null
       >
         {value !== null ? `${value > 0 ? "+" : ""}${value.toFixed(2)}%` : "—"}
       </div>
-    </div>
-  );
-}
-
-/* ==================== 净值走势图 ==================== */
-
-type TimeRange = "1m" | "3m" | "6m" | "1y" | "3y" | "all";
-
-const TIME_RANGES: Array<{ key: TimeRange; label: string; days: number }> = [
-  { key: "1m", label: "近1月", days: 30 },
-  { key: "3m", label: "近3月", days: 90 },
-  { key: "6m", label: "近6月", days: 180 },
-  { key: "1y", label: "近1年", days: 365 },
-  { key: "3y", label: "近3年", days: 1095 },
-  { key: "all", label: "成立来", days: Infinity },
-];
-
-function NavTrendChart({ data }: { data: Array<{ date: string; nav: number }> }) {
-  const [range, setRange] = useState<TimeRange>("1y");
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-  const [pointerDown, setPointerDown] = useState(false);
-
-  const filtered = useMemo(() => {
-    if (range === "all") return data;
-    const config = TIME_RANGES.find((r) => r.key === range);
-    if (!config) return data;
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - config.days);
-    const cutoffStr = cutoff.toISOString().split("T")[0];
-    return data.filter((d) => d.date >= cutoffStr);
-  }, [data, range]);
-
-  if (filtered.length < 2) return <p className="text-sm text-muted-foreground">数据不足</p>;
-
-  const recent =
-    filtered.length > 200
-      ? filtered.filter(
-          (_, i) => i % Math.ceil(filtered.length / 200) === 0 || i === filtered.length - 1,
-        )
-      : filtered;
-
-  const width = 700;
-  const height = 240;
-  const padding = { top: 10, right: 10, bottom: 30, left: 45 };
-  const chartW = width - padding.left - padding.right;
-  const chartH = height - padding.top - padding.bottom;
-
-  const { coords, areaPath, linePath, lineColor, fillColor, yTicks, xLabels } = useMemo(() => {
-    const navs = recent.map((d) => d.nav);
-    const minNav = Math.min(...navs);
-    const maxNav = Math.max(...navs);
-    const navRange = maxNav - minNav || 1;
-
-    const coords = recent.map((d, i) => ({
-      x: padding.left + (i / (recent.length - 1)) * chartW,
-      y: padding.top + chartH - ((d.nav - minNav) / navRange) * chartH,
-      ...d,
-    }));
-
-    const points = coords.map((c) => `${c.x},${c.y}`);
-    const areaPath = `M${points[0]} L${points.slice(1).join(" L")} L${padding.left + chartW},${padding.top + chartH} L${padding.left},${padding.top + chartH} Z`;
-    const linePath = `M${points[0]} L${points.slice(1).join(" L")}`;
-
-    const isUp = navs[navs.length - 1] >= navs[0];
-    const lineColor = isUp ? "#10b981" : "#ef4444";
-    const fillColor = isUp ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)";
-
-    const yTicks = Array.from({ length: 3 }, (_, i) => {
-      const val = minNav + (navRange * i) / 2;
-      const y = padding.top + chartH - ((val - minNav) / navRange) * chartH;
-      return { val: val.toFixed(2), y };
-    });
-
-    const firstYear = recent[0].date.slice(0, 4);
-    const lastYear = recent[recent.length - 1].date.slice(0, 4);
-    const crossYear = firstYear !== lastYear;
-    const fmtDate = (d: string) => (crossYear ? d.slice(2) : d.slice(5));
-    const xLabels = [
-      { text: fmtDate(recent[0].date), x: padding.left },
-      { text: fmtDate(recent[Math.floor(recent.length / 2)].date), x: padding.left + chartW / 2 },
-      { text: fmtDate(recent[recent.length - 1].date), x: padding.left + chartW },
-    ];
-
-    return { coords, areaPath, linePath, lineColor, fillColor, yTicks, xLabels };
-  }, [
-    recent,
-    chartW,
-    chartH,
-    padding.left,
-    padding.top,
-    padding.bottom,
-    padding.right,
-    width,
-    height,
-  ]);
-
-  const activeIdx = hoverIdx ?? selectedIdx;
-  const active = activeIdx !== null ? coords[activeIdx] : null;
-  const firstNav = recent[0].nav;
-  const activeChange = active && firstNav > 0 ? ((active.nav - firstNav) / firstNav) * 100 : null;
-
-  const findClosest = (clientX: number, svg: SVGSVGElement) => {
-    const rect = svg.getBoundingClientRect();
-    const scaleX = width / rect.width;
-    const pointerX = (clientX - rect.left) * scaleX;
-    let closest = 0;
-    let minDist = Infinity;
-    for (let i = 0; i < coords.length; i++) {
-      const dist = Math.abs(coords[i].x - pointerX);
-      if (dist < minDist) {
-        minDist = dist;
-        closest = i;
-      }
-    }
-    return closest;
-  };
-
-  return (
-    <div>
-      <div className="relative mb-3 md:block">
-        <div className="flex flex-nowrap gap-1.5 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible md:pb-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {TIME_RANGES.map((r) => (
-            <button
-              key={r.key}
-              onClick={() => setRange(r.key)}
-              className={`min-h-9 shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                range === r.key
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {active && (
-        <div className="mb-2 flex items-center justify-between rounded-md border bg-muted/40 px-3 py-1.5 text-xs">
-          <span className="text-muted-foreground">{active.date}</span>
-          <span>
-            净值 <span className="font-medium">{active.nav.toFixed(4)}</span>
-          </span>
-          {activeChange !== null && (
-            <span className={activeChange >= 0 ? "text-red-500" : "text-emerald-500"}>
-              区间 {activeChange >= 0 ? "+" : ""}
-              {activeChange.toFixed(2)}%
-            </span>
-          )}
-        </div>
-      )}
-
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="w-full"
-        style={{ height: "auto", minHeight: 160, touchAction: "pan-y" }}
-        onPointerDown={(e) => {
-          setPointerDown(true);
-          setSelectedIdx(findClosest(e.clientX, e.currentTarget));
-        }}
-        onPointerMove={(e) => {
-          if (e.pointerType === "mouse") {
-            setHoverIdx(findClosest(e.clientX, e.currentTarget));
-          } else if (pointerDown) {
-            setHoverIdx(findClosest(e.clientX, e.currentTarget));
-          }
-        }}
-        onPointerUp={() => {
-          setPointerDown(false);
-          setHoverIdx(null);
-        }}
-        onPointerLeave={() => {
-          setHoverIdx(null);
-          setPointerDown(false);
-        }}
-      >
-        {yTicks.map((tick, i) => (
-          <g key={i}>
-            <line
-              x1={padding.left}
-              y1={tick.y}
-              x2={padding.left + chartW}
-              y2={tick.y}
-              stroke="currentColor"
-              strokeOpacity={0.08}
-            />
-            <text
-              x={padding.left - 5}
-              y={tick.y + 4}
-              textAnchor="end"
-              className="fill-muted-foreground"
-              fontSize={10}
-            >
-              {tick.val}
-            </text>
-          </g>
-        ))}
-
-        {xLabels.map((label, i) => (
-          <text
-            key={i}
-            x={label.x}
-            y={height - 5}
-            textAnchor={i === 0 ? "start" : i === 2 ? "end" : "middle"}
-            className="fill-muted-foreground"
-            fontSize={10}
-          >
-            {label.text}
-          </text>
-        ))}
-
-        <path d={areaPath} fill={fillColor} />
-        <path d={linePath} fill="none" stroke={lineColor} strokeWidth={2} />
-
-        {active && (
-          <>
-            <line
-              x1={active.x}
-              y1={padding.top}
-              x2={active.x}
-              y2={padding.top + chartH}
-              stroke="currentColor"
-              strokeOpacity={0.2}
-              strokeDasharray="4 2"
-            />
-            <circle
-              cx={active.x}
-              cy={active.y}
-              r={4}
-              fill={lineColor}
-              stroke="white"
-              strokeWidth={2}
-            />
-          </>
-        )}
-      </svg>
     </div>
   );
 }

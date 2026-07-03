@@ -1,10 +1,8 @@
 import type { Route } from "./+types/otc-funds";
 import { Await, useLoaderData, useSearchParams } from "react-router";
-import { AppLink as Link } from "~/components/ui/link";
 import { Suspense, useState, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
-import { FadeIn } from "~/components/motion";
 import { buildMeta } from "~/lib/seo";
 import {
   BarChart3,
@@ -23,7 +21,6 @@ import {
   OTC_CATEGORY_LABELS,
   OTC_CATEGORY_ORDER,
   type OTCCategory,
-  type OTCClassifiedFundData,
   type FundDetailData,
 } from "~/lib/market-data";
 import { ShareExport } from "~/components/share-export";
@@ -31,6 +28,7 @@ import { useIsMobile } from "~/hooks/use-media-query";
 import { MobileCompareLayout } from "~/components/compare-mobile";
 import { COMPARE_COLORS, MAX_COMPARE } from "~/components/compare-mobile/constants";
 import { AppHeader } from "~/components/app-header";
+import { FundCompareChart, PerformanceReturnsChart } from "~/components/charts";
 import {
   FundCompareGridSkeleton,
   MobileCompareLayoutSkeleton,
@@ -580,250 +578,20 @@ function NavTrendOverlay({ funds }: { funds: Array<FundDetailData & { error?: st
             </button>
           ))}
         </div>
-        <OverlayChart funds={fundsWithData} range={range} />
+        <FundCompareChart
+          funds={fundsWithData}
+          defaultRange={range}
+          detailHref={(code) => `/otc-fund?code=${code}`}
+          showRangeControls={false}
+        />
       </CardContent>
     </Card>
-  );
-}
-
-/** 叠加走势图（归一化，纯SVG） */
-function OverlayChart({
-  funds,
-  range,
-}: {
-  funds: Array<FundDetailData & { error?: string }>;
-  range: "3m" | "6m" | "1y" | "all";
-}) {
-  const [hoverX, setHoverX] = useState<number | null>(null);
-
-  const daysMap: Record<string, number> = { "3m": 90, "6m": 180, "1y": 365, all: Infinity };
-  const days = daysMap[range];
-
-  // 按时间范围过滤并归一化
-  const seriesData = useMemo(() => {
-    return funds.map((fund) => {
-      let data = fund.navTrend;
-      if (days !== Infinity) {
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - days);
-        const cutoffStr = cutoff.toISOString().split("T")[0];
-        data = data.filter((d) => d.date >= cutoffStr);
-      }
-      if (data.length < 2) return { fund, points: [] as Array<{ date: string; value: number }> };
-
-      // 归一化：起始点=100
-      const base = data[0].nav;
-      const points = data.map((d) => ({
-        date: d.date,
-        value: base > 0 ? (d.nav / base) * 100 : 100,
-      }));
-
-      // 采样（保留约150个点）
-      const sampled =
-        points.length > 150
-          ? points.filter(
-              (_, i) => i % Math.ceil(points.length / 150) === 0 || i === points.length - 1,
-            )
-          : points;
-
-      return { fund, points: sampled };
-    });
-  }, [funds, days]);
-
-  // 计算全局Y范围
-  const allValues = seriesData.flatMap((s) => s.points.map((p) => p.value));
-  if (allValues.length < 2) {
-    return <p className="text-sm text-muted-foreground">数据不足</p>;
-  }
-
-  const minVal = Math.min(...allValues);
-  const maxVal = Math.max(...allValues);
-  const valRange = maxVal - minVal || 1;
-
-  const width = 700;
-  const height = 260;
-  const padding = { top: 10, right: 10, bottom: 30, left: 45 };
-  const chartW = width - padding.left - padding.right;
-  const chartH = height - padding.top - padding.bottom;
-
-  // 找出所有日期范围
-  const allDates = seriesData.flatMap((s) => s.points.map((p) => p.date));
-  const minDate = allDates.sort()[0];
-  const maxDate = allDates.sort().slice(-1)[0];
-  const dateRange =
-    minDate && maxDate ? new Date(maxDate).getTime() - new Date(minDate).getTime() : 1;
-
-  // Y轴刻度
-  const yTicks = Array.from({ length: 3 }, (_, i) => {
-    const val = minVal + (valRange * i) / 2;
-    const y = padding.top + chartH - ((val - minVal) / valRange) * chartH;
-    return { val: val.toFixed(1), y };
-  });
-
-  // X轴标签
-  const firstDate = minDate?.slice(2) ?? "";
-  const lastDate = maxDate?.slice(2) ?? "";
-  const midIdx = Math.floor((seriesData[0]?.points.length ?? 0) / 2);
-  const midDate = seriesData[0]?.points[midIdx]?.date?.slice(2) ?? "";
-
-  // 鼠标悬浮时查找最近X位置对应的数据
-  const findClosestX = (clientX: number, svg: SVGSVGElement) => {
-    const rect = svg.getBoundingClientRect();
-    const scaleX = width / rect.width;
-    return (clientX - rect.left) * scaleX;
-  };
-
-  const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    setHoverX(findClosestX(e.clientX, e.currentTarget));
-  };
-
-  // 悬浮竖线对应的日期
-  const hoverDate = useMemo(() => {
-    if (hoverX === null || !minDate || !maxDate) return null;
-    const ratio = (hoverX - padding.left) / chartW;
-    if (ratio < 0 || ratio > 1) return null;
-    const t = new Date(minDate).getTime() + ratio * dateRange;
-    return new Date(t).toISOString().split("T")[0];
-  }, [hoverX, minDate, maxDate, dateRange, chartW]);
-
-  return (
-    <div>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="w-full"
-        style={{ height: "auto", minHeight: 160 }}
-        onPointerMove={handlePointerMove}
-        onPointerLeave={() => setHoverX(null)}
-      >
-        {/* Y轴刻度 */}
-        {yTicks.map((tick, i) => (
-          <g key={i}>
-            <line
-              x1={padding.left}
-              y1={tick.y}
-              x2={padding.left + chartW}
-              y2={tick.y}
-              stroke="currentColor"
-              strokeOpacity={0.08}
-            />
-            <text
-              x={padding.left - 5}
-              y={tick.y + 4}
-              textAnchor="end"
-              className="fill-muted-foreground"
-              fontSize={10}
-            >
-              {tick.val}
-            </text>
-          </g>
-        ))}
-
-        {/* X轴标签 */}
-        <text x={padding.left} y={height - 5} className="fill-muted-foreground" fontSize={10}>
-          {firstDate}
-        </text>
-        <text
-          x={padding.left + chartW / 2}
-          y={height - 5}
-          textAnchor="middle"
-          className="fill-muted-foreground"
-          fontSize={10}
-        >
-          {midDate}
-        </text>
-        <text
-          x={padding.left + chartW}
-          y={height - 5}
-          textAnchor="end"
-          className="fill-muted-foreground"
-          fontSize={10}
-        >
-          {lastDate}
-        </text>
-
-        {/* 各基金走势线 */}
-        {seriesData.map((series, sIdx) => {
-          if (series.points.length < 2) return null;
-          const color = COMPARE_COLORS[sIdx % COMPARE_COLORS.length];
-
-          const coords = series.points.map((p) => {
-            const xRatio =
-              dateRange > 0
-                ? (new Date(p.date).getTime() - new Date(minDate).getTime()) / dateRange
-                : 0;
-            const x = padding.left + xRatio * chartW;
-            const y = padding.top + chartH - ((p.value - minVal) / valRange) * chartH;
-            return { x, y, ...p };
-          });
-
-          const linePath = `M${coords.map((c) => `${c.x},${c.y}`).join(" L")}`;
-          const areaPath = `${linePath} L${coords[coords.length - 1].x},${padding.top + chartH} L${coords[0].x},${padding.top + chartH} Z`;
-
-          return (
-            <g key={series.fund.code}>
-              <path d={areaPath} fill={color.fill} />
-              <path d={linePath} fill="none" stroke={color.line} strokeWidth={2} />
-            </g>
-          );
-        })}
-
-        {/* 悬浮竖线 */}
-        {hoverX !== null && hoverX >= padding.left && hoverX <= padding.left + chartW && (
-          <line
-            x1={hoverX}
-            y1={padding.top}
-            x2={hoverX}
-            y2={padding.top + chartH}
-            stroke="currentColor"
-            strokeOpacity={0.3}
-            strokeDasharray="4 2"
-          />
-        )}
-      </svg>
-
-      {/* 悬浮数据提示 */}
-      {hoverDate && (
-        <div className="mt-2 flex flex-wrap gap-3 text-xs">
-          <span className="text-muted-foreground">{hoverDate}</span>
-          {seriesData.map((series, sIdx) => {
-            // 找到最接近hoverDate的数据点
-            const closest = series.points.reduce((prev, curr) =>
-              Math.abs(curr.date.localeCompare(hoverDate)) <
-              Math.abs(prev.date.localeCompare(hoverDate))
-                ? curr
-                : prev,
-            );
-            const change = closest.value - 100;
-            return (
-              <span key={series.fund.code} className="flex items-center gap-1">
-                <span
-                  className="inline-block size-2 rounded-full"
-                  style={{ backgroundColor: COMPARE_COLORS[sIdx % COMPARE_COLORS.length].line }}
-                />
-                <span>{series.fund.name}</span>
-                <span className={change >= 0 ? "text-red-500" : "text-emerald-500"}>
-                  {change >= 0 ? "+" : ""}
-                  {change.toFixed(2)}%
-                </span>
-              </span>
-            );
-          })}
-        </div>
-      )}
-    </div>
   );
 }
 
 /* ==================== 阶段收益对比 ==================== */
 
 function PerformanceComparison({ funds }: { funds: Array<FundDetailData & { error?: string }> }) {
-  const periods = [
-    { key: "oneMonth" as const, label: "近1月" },
-    { key: "threeMonth" as const, label: "近3月" },
-    { key: "sixMonth" as const, label: "近6月" },
-    { key: "oneYear" as const, label: "近1年" },
-  ];
-
   return (
     <Card>
       <CardHeader>
@@ -833,61 +601,7 @@ function PerformanceComparison({ funds }: { funds: Array<FundDetailData & { erro
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="space-y-5">
-          {periods.map((period) => {
-            const values = funds.map((f) => f.performance[period.key] ?? null);
-            const nonNullValues = values.filter((v): v is number => v !== null);
-            const maxAbs =
-              nonNullValues.length > 0 ? Math.max(...nonNullValues.map(Math.abs), 1) : 1;
-
-            return (
-              <div key={period.key}>
-                <div className="mb-2 text-xs font-medium text-muted-foreground">{period.label}</div>
-                <div className="space-y-1.5">
-                  {funds.map((fund) => {
-                    const val = fund.performance[period.key];
-                    const pct = val !== null ? (val / maxAbs) * 50 : 0; // 最大占50%宽度
-
-                    return (
-                      <div key={fund.code} className="flex items-center gap-2">
-                        <span className="w-20 shrink-0 truncate text-xs">{fund.name}</span>
-                        <div className="relative flex-1 h-5">
-                          {/* 中轴线 */}
-                          <div className="absolute left-1/2 top-0 h-full w-px bg-border" />
-                          {/* 条形 */}
-                          {val !== null ? (
-                            <div
-                              className={`absolute top-0.5 h-4 rounded-sm ${
-                                val >= 0 ? "bg-red-500/80" : "bg-emerald-500/80"
-                              }`}
-                              style={{
-                                width: `${Math.abs(pct)}%`,
-                                left: val >= 0 ? "50%" : `${50 - Math.abs(pct)}%`,
-                              }}
-                            />
-                          ) : null}
-                        </div>
-                        <span
-                          className={`w-16 shrink-0 text-right text-xs font-medium ${
-                            val === null
-                              ? "text-muted-foreground"
-                              : val > 0
-                                ? "text-red-500"
-                                : val < 0
-                                  ? "text-emerald-500"
-                                  : ""
-                          }`}
-                        >
-                          {val !== null ? `${val > 0 ? "+" : ""}${val.toFixed(2)}%` : "—"}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <PerformanceReturnsChart funds={funds} detailHref={(code) => `/otc-fund?code=${code}`} />
       </CardContent>
     </Card>
   );
