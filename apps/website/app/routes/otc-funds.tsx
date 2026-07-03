@@ -22,6 +22,7 @@ import {
   OTC_CATEGORY_ORDER,
   type OTCCategory,
   type FundDetailData,
+  type OTCClassifiedFundData,
 } from "~/lib/market-data";
 import { ShareExport } from "~/components/share-export";
 import { useIsMobile } from "~/hooks/use-media-query";
@@ -34,6 +35,13 @@ import {
   MobileCompareLayoutSkeleton,
   SelectedBadgesSkeleton,
 } from "~/components/ui/skeletons";
+import { CustomFundPanel } from "~/components/otc/custom-fund-panel";
+import {
+  normalizeFundCode,
+  useCustomOTCFundsHydration,
+  useCustomOTCFundsStore,
+  type CustomOTCFund,
+} from "~/stores/custom-otc-funds";
 
 export function meta() {
   return buildMeta({
@@ -62,14 +70,78 @@ export async function loader({ request }: Route.LoaderArgs) {
   };
 }
 
+type SearchableOTCFund = Pick<
+  OTCClassifiedFundData,
+  "code" | "name" | "category" | "categoryLabel"
+> & {
+  custom?: boolean;
+};
+
+function getCustomAddCategory(activeCategory: OTCCategory | "all"): OTCCategory {
+  return activeCategory === "all" ? "qdii" : activeCategory;
+}
+
+function toCustomSearchFund(fund: CustomOTCFund): SearchableOTCFund {
+  return {
+    code: fund.code,
+    name: fund.name,
+    category: fund.category,
+    categoryLabel: OTC_CATEGORY_LABELS[fund.category],
+    custom: true,
+  };
+}
+
+function getVisibleSearchFunds(
+  officialFunds: OTCClassifiedFundData[],
+  customFunds: CustomOTCFund[],
+  activeCategory: OTCCategory | "all",
+): SearchableOTCFund[] {
+  const officialVisible =
+    activeCategory === "all"
+      ? officialFunds
+      : officialFunds.filter((fund) => fund.category === activeCategory);
+  const customVisible = customFunds
+    .filter((fund) => activeCategory === "all" || fund.category === activeCategory)
+    .map(toCustomSearchFund);
+  const customCodes = new Set(customVisible.map((fund) => fund.code));
+  const seenOfficial = new Set<string>();
+  const dedupedOfficial = officialVisible.filter((fund) => {
+    const key = `${fund.code}-${fund.category}`;
+    if (customCodes.has(fund.code) || seenOfficial.has(key)) return false;
+    seenOfficial.add(key);
+    return true;
+  });
+
+  return [...customVisible, ...dedupedOfficial];
+}
+
+function decorateFundDetails(
+  details: Array<FundDetailData & { error?: string }>,
+  customFunds: CustomOTCFund[],
+): Array<FundDetailData & { error?: string }> {
+  if (customFunds.length === 0) return details;
+  const customByCode = new Map(customFunds.map((fund) => [fund.code, fund]));
+
+  return details.map((fund) => {
+    const custom = customByCode.get(fund.code);
+    if (!custom || (fund.name && fund.name !== fund.code && !fund.error)) return fund;
+    return { ...fund, name: custom.name };
+  });
+}
+
 export default function OTCFunds() {
   const { fundList, fundDetails } = useLoaderData<typeof loader>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const isMobile = useIsMobile();
+  useCustomOTCFundsHydration();
+  const customFunds = useCustomOTCFundsStore((state) => state.funds);
+  const addCustomFund = useCustomOTCFundsStore((state) => state.addFund);
 
   // 分类过滤器（URL 同步）
   const activeCategory = (searchParams.get("category") ?? "all") as OTCCategory | "all";
+  const customAddCategory = getCustomAddCategory(activeCategory);
+  const customAddCategoryLabel = OTC_CATEGORY_LABELS[customAddCategory];
 
   // 已选基金代码（来自 URL，不依赖数据）
   const selectedCodes = useMemo(
@@ -106,6 +178,15 @@ export default function OTCFunds() {
     [selectedCodes, searchParams, setSearchParams],
   );
 
+  const addCustomFundFromCode = useCallback(
+    (rawCode: string) => {
+      const code = normalizeFundCode(rawCode);
+      const fund = addCustomFund({ code, category: customAddCategory });
+      if (fund) addFund(fund.code);
+    },
+    [addCustomFund, addFund, customAddCategory],
+  );
+
   // 移除基金
   const removeFund = useCallback(
     (code: string) => {
@@ -140,16 +221,24 @@ export default function OTCFunds() {
       <Suspense fallback={<MobileCompareLayoutSkeleton />}>
         <Await resolve={Promise.all([fundList, fundDetails])}>
           {([list, details]) => {
-            const visibleFundList =
-              activeCategory === "all" ? list : list.filter((f) => f.category === activeCategory);
+            const visibleFundList = getVisibleSearchFunds(list, customFunds, activeCategory);
+            const displayDetails = decorateFundDetails(details, customFunds);
             return (
               <MobileCompareLayout
                 title="场外基金对比"
-                funds={details}
-                fundList={visibleFundList.map(({ code, name }) => ({ code, name }))}
+                funds={displayDetails}
+                fundList={visibleFundList.map(({ code, name, categoryLabel, custom }) => ({
+                  code,
+                  name,
+                  categoryLabel,
+                  custom,
+                }))}
                 onAdd={addFund}
                 onRemove={removeFund}
                 onPin={pinFund}
+                onAddCustomFund={addCustomFundFromCode}
+                customAddCategoryLabel={customAddCategoryLabel}
+                detailHref={(code) => `/otc-fund?code=${code}`}
                 headerExtras={
                   <CategoryChips active={activeCategory} onChange={setCategory} compact />
                 }
@@ -160,7 +249,6 @@ export default function OTCFunds() {
       </Suspense>
     );
   }
-
   return (
     <div className="min-h-screen bg-background">
       <AppHeader currentLabel="场外基金对比" />
@@ -203,10 +291,7 @@ export default function OTCFunds() {
               {(list) => {
                 const q = searchQuery.trim().toLowerCase();
                 if (!q) return null;
-                const visibleFundList =
-                  activeCategory === "all"
-                    ? list
-                    : list.filter((f) => f.category === activeCategory);
+                const visibleFundList = getVisibleSearchFunds(list, customFunds, activeCategory);
                 const filtered = visibleFundList.filter(
                   (f) =>
                     !selectedCodes.includes(f.code) &&
@@ -217,7 +302,7 @@ export default function OTCFunds() {
                   <div className="mt-1 max-h-60 overflow-y-auto rounded-md border bg-background shadow-md">
                     {filtered.slice(0, 20).map((f) => (
                       <button
-                        key={f.code}
+                        key={`${f.custom ? "custom" : "fund"}-${f.code}-${f.category}`}
                         onClick={() => {
                           addFund(f.code);
                           setSearchQuery("");
@@ -230,7 +315,7 @@ export default function OTCFunds() {
                         </span>
                         <span className="ml-2 flex shrink-0 items-center gap-1.5">
                           <Badge variant="secondary" className="text-[10px]">
-                            {f.categoryLabel}
+                            {f.custom ? "自选" : f.categoryLabel}
                           </Badge>
                           <Plus className="size-4 text-muted-foreground" />
                         </span>
@@ -248,7 +333,7 @@ export default function OTCFunds() {
               <Await resolve={fundDetails}>
                 {(details) => (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {details.map((fund, idx) => (
+                    {decorateFundDetails(details, customFunds).map((fund, idx) => (
                       <Badge
                         key={fund.code}
                         variant="secondary"
@@ -293,6 +378,13 @@ export default function OTCFunds() {
           )}
         </section>
 
+        <CustomFundPanel
+          activeCategory={activeCategory}
+          selectedCodes={selectedCodes}
+          reachedLimit={selectedCodes.length >= MAX_COMPARE}
+          onAdd={addFund}
+        />
+
         {/* 对比内容（可导出区域） */}
         <div className="flex items-center justify-end mb-3">
           {selectedCodes.length >= 2 && (
@@ -301,7 +393,7 @@ export default function OTCFunds() {
                 {(details) => (
                   <ShareExport
                     module="fund-compare"
-                    data={{ funds: details }}
+                    data={{ funds: decorateFundDetails(details, customFunds) }}
                     fileName="otc-fund-compare"
                   />
                 )}
@@ -313,7 +405,12 @@ export default function OTCFunds() {
           {selectedCodes.length >= 2 ? (
             <Suspense fallback={<FundCompareGridSkeleton count={selectedCodes.length} />}>
               <Await resolve={fundDetails}>
-                {(details) => <CompareContent funds={details} onRemove={removeFund} />}
+                {(details) => (
+                  <CompareContent
+                    funds={decorateFundDetails(details, customFunds)}
+                    onRemove={removeFund}
+                  />
+                )}
               </Await>
             </Suspense>
           ) : selectedCodes.length === 1 ? (

@@ -5,19 +5,22 @@
  * - 从底部滑入的抽屉（80vh）
  * - 支持基金代码/名称模糊搜索
  * - 已选基金过滤、上限禁用提示
+ * - 搜索 6 位代码无匹配时，可保存为浏览器自选基金并加入
  * - 拖拽抓手下滑关闭
- *
- * 不引入新依赖：基于 motion 实现，与项目技术栈一致
  */
 import { useState, useMemo, useEffect, useRef } from "react";
 import { motion, AnimatePresence, type PanInfo } from "motion/react";
-import { Search, X, Plus, Check } from "lucide-react";
+import { Search, X, Plus, Check, BookmarkPlus } from "lucide-react";
+import { Badge } from "~/components/ui/badge";
 import { DURATION, EASING } from "~/lib/motion";
+import { isValidFundCode, normalizeFundCode } from "~/stores/custom-otc-funds";
 import { MAX_COMPARE } from "./constants";
 
-interface FundListItem {
+export interface FundListItem {
   code: string;
   name: string;
+  categoryLabel?: string;
+  custom?: boolean;
 }
 
 interface FundSearchSheetProps {
@@ -29,6 +32,10 @@ interface FundSearchSheetProps {
   selectedCodes: string[];
   /** 添加基金回调 */
   onAdd: (code: string) => void;
+  /** 保存浏览器自选并加入，未传时隐藏手动添加入口 */
+  onAddCustom?: (code: string) => void;
+  /** 手动添加时使用的分类提示 */
+  customAddCategoryLabel?: string;
 }
 
 export function FundSearchSheet({
@@ -37,6 +44,8 @@ export function FundSearchSheet({
   fundList,
   selectedCodes,
   onAdd,
+  onAddCustom,
+  customAddCategoryLabel,
 }: FundSearchSheetProps) {
   const [query, setQuery] = useState("");
   const [dragY, setDragY] = useState(0);
@@ -72,9 +81,27 @@ export function FundSearchSheet({
       .slice(0, 50);
   }, [fundList, query]);
 
+  const reachedLimit = selectedCodes.length >= MAX_COMPARE;
+  const normalizedQueryCode = normalizeFundCode(query);
+  const exactCodeInList = fundList.some((fund) => fund.code === normalizedQueryCode);
+  const canAddCustom =
+    Boolean(onAddCustom) &&
+    isValidFundCode(normalizedQueryCode) &&
+    !exactCodeInList &&
+    !selectedCodes.includes(normalizedQueryCode) &&
+    !reachedLimit;
+
   const handleAdd = (code: string) => {
     onAdd(code);
     // 添加后不关闭抽屉，便于继续添加；达到上限后自动关闭
+    if (selectedCodes.length + 1 >= MAX_COMPARE) {
+      onOpenChange(false);
+    }
+  };
+
+  const handleAddCustom = () => {
+    if (!canAddCustom || !onAddCustom) return;
+    onAddCustom(normalizedQueryCode);
     if (selectedCodes.length + 1 >= MAX_COMPARE) {
       onOpenChange(false);
     }
@@ -88,8 +115,6 @@ export function FundSearchSheet({
       setDragY(0);
     }
   };
-
-  const reachedLimit = selectedCodes.length >= MAX_COMPARE;
 
   return (
     <AnimatePresence>
@@ -161,6 +186,28 @@ export function FundSearchSheet({
                   已达上限 {MAX_COMPARE} 只，请先移除部分基金
                 </p>
               )}
+              {canAddCustom && (
+                <button
+                  type="button"
+                  onClick={handleAddCustom}
+                  className="mt-2 flex min-h-11 w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm active:bg-muted"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <BookmarkPlus className="size-4 text-primary" />
+                      <span className="font-medium">保存并加入 {normalizedQueryCode}</span>
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      存到本浏览器，下次搜索会优先显示
+                    </span>
+                  </span>
+                  {customAddCategoryLabel && (
+                    <Badge variant="secondary" className="ml-2 shrink-0 text-[10px]">
+                      {customAddCategoryLabel}
+                    </Badge>
+                  )}
+                </button>
+              )}
             </div>
 
             {/* 列表 */}
@@ -175,17 +222,29 @@ export function FundSearchSheet({
                     const selected = selectedCodes.includes(f.code);
                     const disabled = selected || reachedLimit;
                     return (
-                      <li key={f.code}>
+                      <li key={`${f.custom ? "custom" : "fund"}-${f.code}`}>
                         <button
                           onClick={() => !disabled && handleAdd(f.code)}
                           disabled={disabled}
                           className="flex w-full items-center justify-between rounded-lg px-3 py-3 text-left text-sm transition-colors enabled:hover:bg-muted disabled:opacity-50"
                         >
                           <span className="min-w-0 flex-1">
-                            <span className="block font-mono text-xs text-muted-foreground">
-                              {f.code}
+                            <span className="flex items-center gap-2">
+                              <span className="font-mono text-xs text-muted-foreground">
+                                {f.code}
+                              </span>
+                              {f.custom && (
+                                <Badge variant="secondary" className="text-[10px]">
+                                  自选
+                                </Badge>
+                              )}
+                              {f.categoryLabel && !f.custom && (
+                                <Badge variant="secondary" className="text-[10px]">
+                                  {f.categoryLabel}
+                                </Badge>
+                              )}
                             </span>
-                            <span className="block truncate font-medium">{f.name}</span>
+                            <span className="mt-0.5 block truncate font-medium">{f.name}</span>
                           </span>
                           {selected ? (
                             <Check className="size-4 shrink-0 text-emerald-500" />

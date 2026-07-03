@@ -22,15 +22,10 @@ import type { FundDetailData } from "~/lib/market-data";
 import { ShareExport } from "~/components/share-export";
 import { COMPARE_TABS, MAX_COMPARE, type CompareTab } from "./constants";
 import { FundChipStrip } from "./fund-chip-strip";
-import { FundSearchSheet } from "./fund-search-sheet";
+import { FundSearchSheet, type FundListItem } from "./fund-search-sheet";
 import { MetricsCompareCard } from "./metrics-compare-card";
 import { TrendChartMobile } from "./trend-chart-mobile";
 import { PerformanceBarsMobile } from "./performance-bars-mobile";
-
-interface FundListItem {
-  code: string;
-  name: string;
-}
 
 interface MobileCompareLayoutProps {
   /** 已选基金详情（来自 loader） */
@@ -43,6 +38,12 @@ interface MobileCompareLayoutProps {
   onRemove: (code: string) => void;
   /** 置顶（移到首位，通过重排 URL 实现） */
   onPin?: (code: string) => void;
+  /** 保存浏览器自选并加入 */
+  onAddCustomFund?: (code: string) => void;
+  /** 手动添加时使用的分类提示 */
+  customAddCategoryLabel?: string;
+  /** 图表点击详情链接 */
+  detailHref?: (code: string) => string;
   /** 自定义 header 标题，默认「基金对比」 */
   title?: string;
   /** 渲染在 header 与 Tab 之间的额外内容（如分类过滤器），可选 */
@@ -55,6 +56,9 @@ export function MobileCompareLayout({
   onAdd,
   onRemove,
   onPin,
+  onAddCustomFund,
+  customAddCategoryLabel,
+  detailHref = (code) => `/fund/${code}`,
   title = "基金对比",
   headerExtras,
 }: MobileCompareLayoutProps) {
@@ -132,8 +136,12 @@ export function MobileCompareLayout({
                     {activeTab === "metrics" && (
                       <MetricsCompareCard funds={funds} onRemove={onRemove} onPin={onPin} />
                     )}
-                    {activeTab === "trend" && <TrendChartMobile funds={funds} />}
-                    {activeTab === "performance" && <PerformanceBarsMobile funds={funds} />}
+                    {activeTab === "trend" && (
+                      <TrendChartMobile funds={funds} detailHref={detailHref} />
+                    )}
+                    {activeTab === "performance" && (
+                      <PerformanceBarsMobile funds={funds} detailHref={detailHref} />
+                    )}
                   </motion.div>
                 </AnimatePresence>
               ) : (
@@ -181,6 +189,8 @@ export function MobileCompareLayout({
         fundList={fundList}
         selectedCodes={selectedCodes}
         onAdd={onAdd}
+        onAddCustom={onAddCustomFund}
+        customAddCategoryLabel={customAddCategoryLabel}
       />
     </div>
   );

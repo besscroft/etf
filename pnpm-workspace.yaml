@@ -22,6 +22,7 @@ catalog:
   motion: ^12.40.0
   html-to-image: ^1.11.13
   echarts: ^6.1.0
+  zustand: ^5.0.8
 overrides:
   vite: "catalog:"
   vitest: "catalog:"

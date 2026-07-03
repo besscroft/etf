@@ -6,9 +6,13 @@ type RangeKey = "3m" | "6m" | "1y" | "all";
 
 interface TrendChartMobileProps {
   funds: Array<FundDetailData & { error?: string }>;
+  detailHref?: (code: string) => string;
 }
 
-export function TrendChartMobile({ funds }: TrendChartMobileProps) {
+export function TrendChartMobile({
+  funds,
+  detailHref = (code) => `/fund/${code}`,
+}: TrendChartMobileProps) {
   const defaultRange: RangeKey = "1y";
   const fundsWithData = funds.filter((fund) => !fund.error && fund.navTrend?.length >= 2);
 
@@ -21,7 +25,7 @@ export function TrendChartMobile({ funds }: TrendChartMobileProps) {
       <FundCompareChart
         funds={fundsWithData}
         defaultRange={defaultRange}
-        detailHref={(code) => `/fund/${code}`}
+        detailHref={detailHref}
         height={240}
         showRangeControls={false}
       />
