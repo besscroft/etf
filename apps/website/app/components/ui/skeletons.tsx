@@ -437,3 +437,51 @@ export function SelectedBadgesSkeleton({ count = 2 }: { count?: number }) {
     </div>
   );
 }
+
+/* ==================== 场外基金对比 ==================== */
+
+/** 场外基金对比桌面端骨架：选择基金 Card + 自选列表 Card + 对比区 */
+export function OTCFundsDesktopSkeleton() {
+  return (
+    <div className="space-y-4">
+      {/* 选择基金 Card */}
+      <Card>
+        <CardContent className="space-y-3 p-4">
+          {/* 分类 chips */}
+          <div className="flex gap-1.5">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <Skeleton key={i} className="h-7 w-16 rounded-full" />
+            ))}
+          </div>
+          {/* 搜索框 */}
+          <Skeleton className="h-10 w-full rounded-lg" />
+          {/* 已选区 */}
+          <div className="border-t pt-3">
+            <Skeleton className="h-4 w-24" />
+          </div>
+        </CardContent>
+      </Card>
+      {/* 自选基金 Card */}
+      <Card>
+        <CardHeader className="flex-row items-center justify-between border-b">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-8 w-16" />
+        </CardHeader>
+        <CardContent className="space-y-2 py-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-14 w-full rounded-lg" />
+          ))}
+        </CardContent>
+      </Card>
+      {/* 对比区 */}
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-4 w-24" />
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-48 w-full" />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

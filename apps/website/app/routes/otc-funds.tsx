@@ -1,47 +1,35 @@
 import type { Route } from "./+types/otc-funds";
 import { Await, useLoaderData, useSearchParams } from "react-router";
-import { Suspense, useState, useMemo, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "~/components/ui/card";
-import { Badge } from "~/components/ui/badge";
+import { Suspense, useMemo, useCallback } from "react";
+import { Search, BarChart3, Activity } from "lucide-react";
 import { buildMeta } from "~/lib/seo";
-import {
-  BarChart3,
-  Search,
-  X,
-  Plus,
-  Activity,
-  LineChart,
-  Trophy,
-  Trash2,
-  Filter,
-} from "lucide-react";
 import {
   getAllOTCFundData,
   getFundCompareData,
-  OTC_CATEGORY_LABELS,
-  OTC_CATEGORY_ORDER,
-  type OTCCategory,
   type FundDetailData,
-  type OTCClassifiedFundData,
+  type OTCCategory,
 } from "~/lib/market-data";
 import { ShareExport } from "~/components/share-export";
 import { useIsMobile } from "~/hooks/use-media-query";
 import { MobileCompareLayout } from "~/components/compare-mobile";
-import { COMPARE_COLORS, MAX_COMPARE } from "~/components/compare-mobile/constants";
+import { MAX_COMPARE } from "~/components/compare-mobile/constants";
 import { AppHeader } from "~/components/app-header";
-import { FundCompareChart, PerformanceReturnsChart } from "~/components/charts";
+import { Card, CardContent } from "~/components/ui/card";
 import {
   FundCompareGridSkeleton,
   MobileCompareLayoutSkeleton,
-  SelectedBadgesSkeleton,
+  OTCFundsDesktopSkeleton,
 } from "~/components/ui/skeletons";
-import { CustomFundPanel } from "~/components/otc/custom-fund-panel";
 import {
-  normalizeFundCode,
-  useCustomOTCFundsHydration,
-  useCustomOTCFundsStore,
-  type CustomOTCFund,
-} from "~/stores/custom-otc-funds";
+  CategoryChips,
+  CustomFundListCard,
+  FundSearchSection,
+  MetricsCompare,
+  NavTrendOverlay,
+  PerformanceComparison,
+  SectionHeader,
+} from "~/components/otc";
+import { useCustomOTCFundsHydration, useCustomOTCFundsStore } from "~/stores/custom-otc-funds";
 
 export function meta() {
   return buildMeta({
@@ -70,78 +58,15 @@ export async function loader({ request }: Route.LoaderArgs) {
   };
 }
 
-type SearchableOTCFund = Pick<
-  OTCClassifiedFundData,
-  "code" | "name" | "category" | "categoryLabel"
-> & {
-  custom?: boolean;
-};
-
-function getCustomAddCategory(activeCategory: OTCCategory | "all"): OTCCategory {
-  return activeCategory === "all" ? "qdii" : activeCategory;
-}
-
-function toCustomSearchFund(fund: CustomOTCFund): SearchableOTCFund {
-  return {
-    code: fund.code,
-    name: fund.name,
-    category: fund.category,
-    categoryLabel: OTC_CATEGORY_LABELS[fund.category],
-    custom: true,
-  };
-}
-
-function getVisibleSearchFunds(
-  officialFunds: OTCClassifiedFundData[],
-  customFunds: CustomOTCFund[],
-  activeCategory: OTCCategory | "all",
-): SearchableOTCFund[] {
-  const officialVisible =
-    activeCategory === "all"
-      ? officialFunds
-      : officialFunds.filter((fund) => fund.category === activeCategory);
-  const customVisible = customFunds
-    .filter((fund) => activeCategory === "all" || fund.category === activeCategory)
-    .map(toCustomSearchFund);
-  const customCodes = new Set(customVisible.map((fund) => fund.code));
-  const seenOfficial = new Set<string>();
-  const dedupedOfficial = officialVisible.filter((fund) => {
-    const key = `${fund.code}-${fund.category}`;
-    if (customCodes.has(fund.code) || seenOfficial.has(key)) return false;
-    seenOfficial.add(key);
-    return true;
-  });
-
-  return [...customVisible, ...dedupedOfficial];
-}
-
-function decorateFundDetails(
-  details: Array<FundDetailData & { error?: string }>,
-  customFunds: CustomOTCFund[],
-): Array<FundDetailData & { error?: string }> {
-  if (customFunds.length === 0) return details;
-  const customByCode = new Map(customFunds.map((fund) => [fund.code, fund]));
-
-  return details.map((fund) => {
-    const custom = customByCode.get(fund.code);
-    if (!custom || (fund.name && fund.name !== fund.code && !fund.error)) return fund;
-    return { ...fund, name: custom.name };
-  });
-}
-
 export default function OTCFunds() {
   const { fundList, fundDetails } = useLoaderData<typeof loader>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [searchQuery, setSearchQuery] = useState("");
   const isMobile = useIsMobile();
   useCustomOTCFundsHydration();
   const customFunds = useCustomOTCFundsStore((state) => state.funds);
-  const addCustomFund = useCustomOTCFundsStore((state) => state.addFund);
 
   // 分类过滤器（URL 同步）
   const activeCategory = (searchParams.get("category") ?? "all") as OTCCategory | "all";
-  const customAddCategory = getCustomAddCategory(activeCategory);
-  const customAddCategoryLabel = OTC_CATEGORY_LABELS[customAddCategory];
 
   // 已选基金代码（来自 URL，不依赖数据）
   const selectedCodes = useMemo(
@@ -178,15 +103,6 @@ export default function OTCFunds() {
     [selectedCodes, searchParams, setSearchParams],
   );
 
-  const addCustomFundFromCode = useCallback(
-    (rawCode: string) => {
-      const code = normalizeFundCode(rawCode);
-      const fund = addCustomFund({ code, category: customAddCategory });
-      if (fund) addFund(fund.code);
-    },
-    [addCustomFund, addFund, customAddCategory],
-  );
-
   // 移除基金
   const removeFund = useCallback(
     (code: string) => {
@@ -215,490 +131,158 @@ export default function OTCFunds() {
     [selectedCodes, searchParams, setSearchParams],
   );
 
-  // 移动端：整体包装（布局依赖 fundList + fundDetails）
+  const reachedLimit = selectedCodes.length >= MAX_COMPARE;
+
+  // 移动端：走 MobileCompareLayout
   if (isMobile) {
     return (
       <Suspense fallback={<MobileCompareLayoutSkeleton />}>
         <Await resolve={Promise.all([fundList, fundDetails])}>
-          {([list, details]) => {
-            const visibleFundList = getVisibleSearchFunds(list, customFunds, activeCategory);
-            const displayDetails = decorateFundDetails(details, customFunds);
-            return (
-              <MobileCompareLayout
-                title="场外基金对比"
-                funds={displayDetails}
-                fundList={visibleFundList.map(({ code, name, categoryLabel, custom }) => ({
-                  code,
-                  name,
-                  categoryLabel,
-                  custom,
-                }))}
-                onAdd={addFund}
-                onRemove={removeFund}
-                onPin={pinFund}
-                onAddCustomFund={addCustomFundFromCode}
-                customAddCategoryLabel={customAddCategoryLabel}
-                detailHref={(code) => `/otc-fund?code=${code}`}
-                headerExtras={
-                  <CategoryChips active={activeCategory} onChange={setCategory} compact />
-                }
-              />
-            );
-          }}
+          {([list, details]) => (
+            <MobileCompareLayout
+              title="场外基金对比"
+              funds={details}
+              fundList={list.map((f) => ({
+                code: f.code,
+                name: f.name,
+                categoryLabel: undefined,
+                custom: false,
+              }))}
+              customFunds={customFunds}
+              onAdd={addFund}
+              onRemove={removeFund}
+              onPin={pinFund}
+              onAddCustomFund={(code) => addFund(code)}
+              detailHref={(code) => `/otc-fund?code=${code}`}
+              category={activeCategory}
+              onCategoryChange={setCategory}
+            />
+          )}
         </Await>
       </Suspense>
     );
   }
+
+  // 桌面端：Hero + 3 段（搜索 / 自选 / 对比）+ 2 列对比网格
   return (
     <div className="min-h-screen bg-background">
       <AppHeader currentLabel="场外基金对比" />
-      <main className="container mx-auto max-w-6xl px-3 py-6 sm:px-4">
-        {/* 分类过滤器 */}
-        <section className="mb-4">
-          <CategoryChips active={activeCategory} onChange={setCategory} />
-        </section>
+      <main className="container mx-auto max-w-6xl px-3 py-4 sm:px-4 sm:py-6">
+        <Suspense fallback={<OTCFundsDesktopSkeleton />}>
+          <Await resolve={Promise.all([fundList, fundDetails])}>
+            {([list, details]) => (
+              <div className="space-y-6">
+                {/* Hero 区 */}
+                <section>
+                  <h1 className="text-2xl font-bold tracking-tight md:text-3xl">场外基金对比</h1>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    添加 2-4 只基金，多维度对比净值走势、阶段收益、费率和规模
+                  </p>
+                </section>
 
-        {/* 搜索添加基金 */}
-        <section className="mb-6">
-          <h2 className="mb-3 text-lg font-semibold">选择基金</h2>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={
-                activeCategory === "all"
-                  ? "搜索基金代码或名称..."
-                  : `搜索${OTC_CATEGORY_LABELS[activeCategory]}基金...`
-              }
-              className="w-full rounded-md border bg-background px-10 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-              disabled={selectedCodes.length >= MAX_COMPARE}
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                <X className="size-4" />
-              </button>
-            )}
-          </div>
-
-          {/* 搜索结果下拉：依赖 fundList，未到时隐藏（输入时不会误显示） */}
-          <Suspense fallback={null}>
-            <Await resolve={fundList}>
-              {(list) => {
-                const q = searchQuery.trim().toLowerCase();
-                if (!q) return null;
-                const visibleFundList = getVisibleSearchFunds(list, customFunds, activeCategory);
-                const filtered = visibleFundList.filter(
-                  (f) =>
-                    !selectedCodes.includes(f.code) &&
-                    (f.code.toLowerCase().includes(q) || f.name.toLowerCase().includes(q)),
-                );
-                if (filtered.length === 0) return null;
-                return (
-                  <div className="mt-1 max-h-60 overflow-y-auto rounded-md border bg-background shadow-md">
-                    {filtered.slice(0, 20).map((f) => (
-                      <button
-                        key={`${f.custom ? "custom" : "fund"}-${f.code}-${f.category}`}
-                        onClick={() => {
-                          addFund(f.code);
-                          setSearchQuery("");
-                        }}
-                        className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-muted transition-colors"
-                      >
-                        <span className="min-w-0 flex-1 truncate">
-                          <span className="font-mono text-xs text-muted-foreground">{f.code}</span>
-                          <span className="ml-2">{f.name}</span>
-                        </span>
-                        <span className="ml-2 flex shrink-0 items-center gap-1.5">
-                          <Badge variant="secondary" className="text-[10px]">
-                            {f.custom ? "自选" : f.categoryLabel}
-                          </Badge>
-                          <Plus className="size-4 text-muted-foreground" />
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                );
-              }}
-            </Await>
-          </Suspense>
-
-          {/* 已选基金标签：依赖 fundDetails 取名称，未到时显示骨架 */}
-          {selectedCodes.length > 0 && (
-            <Suspense fallback={<SelectedBadgesSkeleton count={selectedCodes.length} />}>
-              <Await resolve={fundDetails}>
-                {(details) => (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {decorateFundDetails(details, customFunds).map((fund, idx) => (
-                      <Badge
-                        key={fund.code}
-                        variant="secondary"
-                        className="gap-1.5 px-3 py-1.5 text-sm"
-                        style={{
-                          borderColor: COMPARE_COLORS[idx % COMPARE_COLORS.length].line,
-                          borderWidth: 1.5,
-                        }}
-                      >
-                        <span
-                          className="inline-block size-2.5 rounded-full"
-                          style={{
-                            backgroundColor: COMPARE_COLORS[idx % COMPARE_COLORS.length].line,
-                          }}
-                        />
-                        {fund.name}
-                        <button
-                          onClick={() => removeFund(fund.code)}
-                          className="ml-0.5 hover:text-destructive"
-                        >
-                          <X className="size-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                    {selectedCodes.length < MAX_COMPARE && (
-                      <span className="flex items-center text-xs text-muted-foreground">
-                        还可添加 {MAX_COMPARE - selectedCodes.length} 只
-                      </span>
-                    )}
-                  </div>
-                )}
-              </Await>
-            </Suspense>
-          )}
-
-          {selectedCodes.length === 0 && (
-            <p className="mt-3 text-sm text-muted-foreground">
-              {activeCategory === "all"
-                ? `搜索并选择最多 ${MAX_COMPARE} 只基金进行对比（覆盖股票/混合/指数/债券/QDII/FOF）`
-                : `搜索并选择最多 ${MAX_COMPARE} 只${OTC_CATEGORY_LABELS[activeCategory]}基金进行对比`}
-            </p>
-          )}
-        </section>
-
-        <CustomFundPanel
-          activeCategory={activeCategory}
-          selectedCodes={selectedCodes}
-          reachedLimit={selectedCodes.length >= MAX_COMPARE}
-          onAdd={addFund}
-        />
-
-        {/* 对比内容（可导出区域） */}
-        <div className="flex items-center justify-end mb-3">
-          {selectedCodes.length >= 2 && (
-            <Suspense fallback={null}>
-              <Await resolve={fundDetails}>
-                {(details) => (
-                  <ShareExport
-                    module="fund-compare"
-                    data={{ funds: decorateFundDetails(details, customFunds) }}
-                    fileName="otc-fund-compare"
+                {/* 段 1：选择基金（SectionHeader + 复合 Card） */}
+                <section className="space-y-3">
+                  <SectionHeader
+                    icon={Search}
+                    title="选择基金"
+                    description="按分类筛选后搜索代码或名称，最多选 4 只"
+                    right={<CategoryChips active={activeCategory} onChange={setCategory} />}
                   />
-                )}
-              </Await>
-            </Suspense>
-          )}
-        </div>
-        <div className="bg-background p-2">
-          {selectedCodes.length >= 2 ? (
-            <Suspense fallback={<FundCompareGridSkeleton count={selectedCodes.length} />}>
-              <Await resolve={fundDetails}>
-                {(details) => (
-                  <CompareContent
-                    funds={decorateFundDetails(details, customFunds)}
+                  <FundSearchSection
+                    activeCategory={activeCategory}
+                    fundList={list}
+                    customFunds={customFunds}
+                    fundDetails={details}
+                    selectedCodes={selectedCodes}
+                    onAdd={addFund}
                     onRemove={removeFund}
                   />
+                </section>
+
+                {/* 段 2：自选基金（SectionHeader + 列表） */}
+                <CustomFundListCard
+                  activeCategory={activeCategory}
+                  selectedCodes={selectedCodes}
+                  reachedLimit={reachedLimit}
+                  onAdd={addFund}
+                />
+
+                {/* 段 3：对比内容（≥ 2 只时显示） */}
+                {selectedCodes.length >= 2 && (
+                  <div data-exclude-from-export="true" className="flex justify-end">
+                    <ShareExport
+                      module="fund-compare"
+                      data={{ funds: details }}
+                      fileName="otc-fund-compare"
+                    />
+                  </div>
                 )}
-              </Await>
-            </Suspense>
-          ) : selectedCodes.length === 1 ? (
-            <p className="text-center text-sm text-muted-foreground">
-              请再选择至少 1 只基金开始对比
-            </p>
-          ) : (
-            <EmptyState />
-          )}
-        </div>
-        {/* 可导出区域结束 */}
+                {selectedCodes.length >= 2 ? (
+                  <Suspense fallback={<FundCompareGridSkeleton count={selectedCodes.length} />}>
+                    <Await resolve={fundDetails}>
+                      {(resolvedDetails) => (
+                        <CompareSection funds={resolvedDetails} onRemove={removeFund} />
+                      )}
+                    </Await>
+                  </Suspense>
+                ) : selectedCodes.length === 1 ? (
+                  <Card>
+                    <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+                      <p className="text-sm text-muted-foreground">请再选择至少 1 只基金开始对比</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <EmptyState />
+                )}
+              </div>
+            )}
+          </Await>
+        </Suspense>
       </main>
     </div>
   );
 }
 
-/* ==================== 分类过滤器 ==================== */
+/* ==================== 子组件 ==================== */
 
-function CategoryChips({
-  active,
-  onChange,
-  compact = false,
+/** 对比区：2 列网格（lg 以上），指标 + 阶段收益并排，净值走势满宽 */
+function CompareSection({
+  funds,
+  onRemove,
 }: {
-  active: OTCCategory | "all";
-  onChange: (cat: OTCCategory | "all") => void;
-  compact?: boolean;
+  funds: Array<FundDetailData & { error?: string }>;
+  onRemove: (code: string) => void;
 }) {
-  const items: Array<{ key: OTCCategory | "all"; label: string }> = [
-    { key: "all", label: "全部" },
-    ...OTC_CATEGORY_ORDER.map((c) => ({ key: c, label: OTC_CATEGORY_LABELS[c] })),
-  ];
-
   return (
-    <div
-      className={`flex items-center gap-1.5 ${compact ? "overflow-x-auto" : "flex-wrap"}`}
-      role="tablist"
-      aria-label="基金分类"
-    >
-      {!compact && (
-        <span className="flex items-center gap-1 pr-1 text-xs text-muted-foreground">
-          <Filter className="size-3.5" />
-          分类
-        </span>
-      )}
-      {items.map((item) => {
-        const isActive = active === item.key;
-        return (
-          <button
-            key={item.key}
-            type="button"
-            role="tab"
-            aria-selected={isActive}
-            onClick={() => onChange(item.key)}
-            className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-              isActive
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:bg-muted/70"
-            }`}
-          >
-            {item.label}
-          </button>
-        );
-      })}
+    <div className="space-y-4">
+      <SectionHeader
+        icon={Activity}
+        title="对比分析"
+        description={`已选 ${funds.length} 只基金，并排查看指标、走势与收益`}
+      />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <MetricsCompare funds={funds} onRemove={onRemove} />
+        <PerformanceComparison funds={funds} detailHref={(code) => `/otc-fund?code=${code}`} />
+      </div>
+      <NavTrendOverlay funds={funds} detailHref={(code) => `/otc-fund?code=${code}`} />
     </div>
   );
 }
 
-/* ==================== 空状态 ==================== */
-
+/** 空状态：未选基金时展示 */
 function EmptyState() {
   return (
-    <Card className="py-16">
-      <CardContent className="flex flex-col items-center gap-4 text-center">
-        <BarChart3 className="size-12 text-muted-foreground/40" />
+    <Card>
+      <CardContent className="flex flex-col items-center gap-4 py-16 text-center">
+        <div className="rounded-full bg-muted p-4">
+          <BarChart3 className="size-7 text-muted-foreground" />
+        </div>
         <div>
-          <p className="text-lg font-medium">选择基金开始对比</p>
+          <p className="text-base font-medium">选择基金开始对比</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            在上方搜索框中输入基金代码或名称，选择 2-4 只场外基金进行多维度对比
+            在上方搜索框输入代码或名称，选择 2-4 只场外基金进行多维度对比
           </p>
         </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-/* ==================== 对比内容主体 ==================== */
-
-function CompareContent({
-  funds,
-  onRemove,
-}: {
-  funds: Array<FundDetailData & { error?: string }>;
-  onRemove: (code: string) => void;
-}) {
-  return (
-    <div className="space-y-6">
-      {/* 核心指标对比 */}
-      <MetricsComparison funds={funds} onRemove={onRemove} />
-      {/* 净值走势叠加图 */}
-      <NavTrendOverlay funds={funds} />
-      {/* 阶段收益对比 */}
-      <PerformanceComparison funds={funds} />
-    </div>
-  );
-}
-
-/* ==================== 核心指标对比 ==================== */
-
-function MetricsComparison({
-  funds,
-  onRemove,
-}: {
-  funds: Array<FundDetailData & { error?: string }>;
-  onRemove: (code: string) => void;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-          <Activity className="size-4 text-primary" />
-          核心指标对比
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b">
-                <th className="pb-2 pr-4 text-left text-xs font-medium text-muted-foreground">
-                  指标
-                </th>
-                {funds.map((fund, idx) => (
-                  <th key={fund.code} className="pb-2 text-center text-xs font-medium">
-                    <div className="flex flex-col items-center gap-1">
-                      <span
-                        className="inline-block size-2 rounded-full"
-                        style={{
-                          backgroundColor: COMPARE_COLORS[idx % COMPARE_COLORS.length].line,
-                        }}
-                      />
-                      <span>{fund.name}</span>
-                      <button
-                        onClick={() => onRemove(fund.code)}
-                        className="text-muted-foreground hover:text-destructive"
-                      >
-                        <Trash2 className="size-3" />
-                      </button>
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              <MetricRow label="基金代码" values={funds.map((f) => f.code)} />
-              <MetricRow
-                label="最新净值"
-                values={funds.map((f) => (f.price > 0 ? `${f.price}` : "—"))}
-              />
-              <MetricRow label="涨跌幅" values={funds.map((f) => f.changePercent)} isChange />
-              <MetricRow label="基金规模" values={funds.map((f) => f.scale)} />
-              <MetricRow label="管理费率" values={funds.map((f) => f.fee)} />
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-/** 对比表格行 */
-function MetricRow({
-  label,
-  values,
-  isChange,
-  highlight,
-}: {
-  label: string;
-  values: Array<string | number>;
-  isChange?: boolean;
-  highlight?: (idx: number) => string;
-}) {
-  return (
-    <tr className="border-b last:border-0">
-      <td className="py-2.5 pr-4 text-xs text-muted-foreground whitespace-nowrap">{label}</td>
-      {values.map((val, idx) => {
-        let className = "py-2.5 text-center";
-        if (isChange) {
-          const num = typeof val === "number" ? val : parseFloat(String(val));
-          if (!isNaN(num)) {
-            className += num > 0 ? " text-red-500" : num < 0 ? " text-emerald-500" : "";
-          }
-        }
-        if (highlight) {
-          const extra = highlight(idx);
-          if (extra) className += ` ${extra}`;
-        }
-        return (
-          <td key={idx} className={className}>
-            {isChange && typeof val === "number" ? `${val > 0 ? "+" : ""}${val}%` : String(val)}
-          </td>
-        );
-      })}
-    </tr>
-  );
-}
-
-/* ==================== 净值走势叠加图 ==================== */
-
-function NavTrendOverlay({ funds }: { funds: Array<FundDetailData & { error?: string }> }) {
-  const [range, setRange] = useState<"3m" | "6m" | "1y" | "all">("1y");
-
-  // 过滤有走势数据的基金
-  const fundsWithData = useMemo(
-    () => funds.filter((f) => f.navTrend && f.navTrend.length >= 2),
-    [funds],
-  );
-
-  if (fundsWithData.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-            <LineChart className="size-4 text-blue-500" />
-            净值走势对比
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-center text-sm text-muted-foreground">暂无净值走势数据</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-          <LineChart className="size-4 text-blue-500" />
-          净值走势对比
-        </CardTitle>
-        <CardDescription>归一化净值（起始点=100），直观对比走势强弱</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {/* 时间范围选择器 */}
-        <div className="mb-3 flex flex-wrap gap-1.5">
-          {[
-            { key: "3m" as const, label: "近3月", days: 90 },
-            { key: "6m" as const, label: "近6月", days: 180 },
-            { key: "1y" as const, label: "近1年", days: 365 },
-            { key: "all" as const, label: "全部", days: Infinity },
-          ].map((r) => (
-            <button
-              key={r.key}
-              onClick={() => setRange(r.key)}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                range === r.key
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-        <FundCompareChart
-          funds={fundsWithData}
-          defaultRange={range}
-          detailHref={(code) => `/otc-fund?code=${code}`}
-          showRangeControls={false}
-        />
-      </CardContent>
-    </Card>
-  );
-}
-
-/* ==================== 阶段收益对比 ==================== */
-
-function PerformanceComparison({ funds }: { funds: Array<FundDetailData & { error?: string }> }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-          <Trophy className="size-4 text-amber-500" />
-          阶段收益对比
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <PerformanceReturnsChart funds={funds} detailHref={(code) => `/otc-fund?code=${code}`} />
       </CardContent>
     </Card>
   );

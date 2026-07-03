@@ -6,14 +6,7 @@ import type { OTCCategory } from "~/lib/market-data";
 const FUND_CODE_RE = /^\d{6}$/;
 const STORAGE_KEY = "etf.custom-otc-funds";
 const FALLBACK_CATEGORY: OTCCategory = "qdii";
-const VALID_CATEGORIES = new Set<OTCCategory>([
-  "stock",
-  "hybrid",
-  "index",
-  "bond",
-  "qdii",
-  "fof",
-]);
+const VALID_CATEGORIES = new Set<OTCCategory>(["stock", "hybrid", "index", "bond", "qdii", "fof"]);
 
 export interface CustomOTCFund {
   code: string;

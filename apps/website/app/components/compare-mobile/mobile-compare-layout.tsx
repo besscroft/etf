@@ -2,27 +2,32 @@
  * MobileCompareLayout 移动端基金对比外壳
  *
  * 负责组合所有移动端对比子组件，承担以下职责：
- * - 精简顶栏（仅返回 + 标题）
+ * - 精简顶栏（仅返回 + 标题 + 数量徽章 + 自选入口）
+ * - 独立分类 chips sticky 行（在 header 与 Tab 之间）
  * - 三段式 Tab 切换（指标/走势/收益）
- * - 已选基金 Chips 横向条
- * - 底部固定操作栏（添加基金）
- * - 底部抽屉搜索（按需打开）
+ * - 主体内容：MetricsCompareCard / TrendChartMobile / PerformanceBarsMobile
+ * - 单层一体化底栏：FundChipStrip（横向滚动）+ 主操作按钮
+ * - 底部抽屉搜索 + 自选基金 Sheet
  *
  * 状态约定：
  * - 基金增删/排序通过回调透传到父组件，由父组件同步 URL
+ * - 分类由父组件 URL 同步（activeCategory），本组件只做渲染
  * - Tab 切换、Sheet 开关为本地 UI 状态
  */
 import { useState } from "react";
 import { AppLink as Link } from "~/components/ui/link";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowLeft, BarChart3, Plus } from "lucide-react";
+import { ArrowLeft, Plus, Database, BarChart3 } from "lucide-react";
 import { DURATION, EASING } from "~/lib/motion";
 import { Button } from "~/components/ui/button";
-import type { FundDetailData } from "~/lib/market-data";
+import type { FundDetailData, OTCCategory } from "~/lib/market-data";
+import type { CustomOTCFund } from "~/stores/custom-otc-funds";
 import { ShareExport } from "~/components/share-export";
+import { CategoryChips } from "~/components/otc";
 import { COMPARE_TABS, MAX_COMPARE, type CompareTab } from "./constants";
 import { FundChipStrip } from "./fund-chip-strip";
 import { FundSearchSheet, type FundListItem } from "./fund-search-sheet";
+import { CustomFundsSheet } from "./custom-funds-sheet";
 import { MetricsCompareCard } from "./metrics-compare-card";
 import { TrendChartMobile } from "./trend-chart-mobile";
 import { PerformanceBarsMobile } from "./performance-bars-mobile";
@@ -40,14 +45,16 @@ interface MobileCompareLayoutProps {
   onPin?: (code: string) => void;
   /** 保存浏览器自选并加入 */
   onAddCustomFund?: (code: string) => void;
-  /** 手动添加时使用的分类提示 */
-  customAddCategoryLabel?: string;
   /** 图表点击详情链接 */
   detailHref?: (code: string) => string;
   /** 自定义 header 标题，默认「基金对比」 */
   title?: string;
-  /** 渲染在 header 与 Tab 之间的额外内容（如分类过滤器），可选 */
-  headerExtras?: React.ReactNode;
+  /** 当前分类（URL 同步），决定顶部 chips 高亮；不传则隐藏分类 chips 行 */
+  category?: OTCCategory | "all";
+  /** 切换分类；不传则分类 chips 不可点 */
+  onCategoryChange?: (cat: OTCCategory | "all") => void;
+  /** 自选基金列表（用于 header 自选入口） */
+  customFunds?: CustomOTCFund[];
 }
 
 export function MobileCompareLayout({
@@ -57,13 +64,15 @@ export function MobileCompareLayout({
   onRemove,
   onPin,
   onAddCustomFund,
-  customAddCategoryLabel,
   detailHref = (code) => `/fund/${code}`,
   title = "基金对比",
-  headerExtras,
+  category,
+  onCategoryChange,
+  customFunds = [],
 }: MobileCompareLayoutProps) {
   const [activeTab, setActiveTab] = useState<CompareTab>("metrics");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [customFundsOpen, setCustomFundsOpen] = useState(false);
 
   const selectedCodes = funds.map((f) => f.code);
   const hasFunds = funds.length > 0;
@@ -80,21 +89,42 @@ export function MobileCompareLayout({
               <ArrowLeft className="size-4" />
             </Button>
           </Link>
-          <BarChart3 className="size-4 text-primary" />
           <span className="text-sm font-semibold">{title}</span>
-          <span className="ml-auto text-xs text-muted-foreground">
+          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
             {funds.length}/{MAX_COMPARE}
           </span>
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setCustomFundsOpen(true)}
+              className="flex h-8 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="打开自选基金"
+              aria-expanded={customFundsOpen}
+            >
+              <Database className="size-3.5" />
+              <span>自选 {customFunds.length > 0 ? `(${customFunds.length})` : ""}</span>
+            </button>
+          </div>
         </div>
       </header>
+
+      {/* 分类 chips 独立 sticky 行（仅在传 category 时显示） */}
+      {category !== undefined && onCategoryChange && (
+        <div className="sticky top-12 z-30 border-b bg-background/95 px-2 py-1.5 backdrop-blur-sm">
+          <CategoryChips active={category} onChange={onCategoryChange} compact />
+        </div>
+      )}
 
       {/* 主体内容 */}
       <main className="flex min-h-0 flex-1 flex-col">
         {hasFunds ? (
           <>
             {/* Tab 切换栏 */}
-            <div className="sticky top-12 z-30 border-b bg-background/95 backdrop-blur-sm">
-              {headerExtras && <div className="border-b px-2 py-1.5">{headerExtras}</div>}
+            <div
+              className={`sticky ${
+                category !== undefined ? "top-[5.0625rem]" : "top-12"
+              } z-20 border-b bg-background/95 backdrop-blur-sm`}
+            >
               <div className="flex">
                 {COMPARE_TABS.map((tab) => (
                   <button
@@ -163,24 +193,36 @@ export function MobileCompareLayout({
         )}
       </main>
 
-      {/* 已选基金 Chips（横向滚动） */}
+      {/* 单层一体化底栏：已选 chips + 主操作按钮 */}
       {hasFunds && (
-        <div className="sticky bottom-[3.25rem] z-20 border-t bg-background/95 backdrop-blur-sm">
+        <div className="sticky bottom-0 z-30 border-t bg-background/95 backdrop-blur-sm">
           <FundChipStrip funds={funds} onRemove={onRemove} />
+          <div className="px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2">
+            <Button
+              onClick={() => setSearchOpen(true)}
+              disabled={reachedLimit}
+              className="h-10 w-full"
+            >
+              <Plus className="size-4" />
+              {reachedLimit ? `已达上限 ${MAX_COMPARE} 只` : "添加基金"}
+            </Button>
+          </div>
         </div>
       )}
 
-      {/* 底部固定操作栏 - 拇指热区 */}
-      <div className="sticky bottom-0 z-30 border-t bg-background px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2">
-        <button
-          onClick={() => setSearchOpen(true)}
-          disabled={reachedLimit}
-          className="flex h-10 w-full items-center justify-center gap-1.5 rounded-lg bg-primary text-sm font-medium text-primary-foreground transition-opacity disabled:opacity-50"
-        >
-          <Plus className="size-4" />
-          {reachedLimit ? `已达上限 ${MAX_COMPARE} 只` : "添加基金"}
-        </button>
-      </div>
+      {/* 未选基金时也展示「添加基金」按钮（不显示 chips） */}
+      {!hasFunds && (
+        <div className="sticky bottom-0 z-30 border-t bg-background/95 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-sm">
+          <Button
+            onClick={() => setSearchOpen(true)}
+            disabled={reachedLimit}
+            className="h-10 w-full"
+          >
+            <Plus className="size-4" />
+            {reachedLimit ? `已达上限 ${MAX_COMPARE} 只` : "添加基金"}
+          </Button>
+        </div>
+      )}
 
       {/* 底部抽屉搜索 */}
       <FundSearchSheet
@@ -190,7 +232,17 @@ export function MobileCompareLayout({
         selectedCodes={selectedCodes}
         onAdd={onAdd}
         onAddCustom={onAddCustomFund}
-        customAddCategoryLabel={customAddCategoryLabel}
+        customAddCategoryLabel={category === "all" ? undefined : category}
+      />
+
+      {/* 自选基金 Sheet */}
+      <CustomFundsSheet
+        open={customFundsOpen}
+        onOpenChange={setCustomFundsOpen}
+        customFunds={customFunds}
+        selectedCodes={selectedCodes}
+        onAdd={onAdd}
+        onAddCustom={onAddCustomFund}
       />
     </div>
   );
@@ -199,7 +251,9 @@ export function MobileCompareLayout({
 function EmptyState() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
-      <BarChart3 className="size-12 text-muted-foreground/40" />
+      <div className="rounded-full bg-muted p-4">
+        <BarChart3 className="size-7 text-muted-foreground" />
+      </div>
       <div>
         <p className="text-base font-medium">选择基金开始对比</p>
         <p className="mt-1 text-sm text-muted-foreground">

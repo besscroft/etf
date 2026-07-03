@@ -10,5 +10,6 @@ export { FundChipStrip } from "./fund-chip-strip";
 export { MetricsCompareCard } from "./metrics-compare-card";
 export { TrendChartMobile } from "./trend-chart-mobile";
 export { PerformanceBarsMobile } from "./performance-bars-mobile";
+export { CustomFundsSheet } from "./custom-funds-sheet";
 export { COMPARE_COLORS, MAX_COMPARE, COMPARE_TABS, getCompareColor } from "./constants";
 export type { CompareTab } from "./constants";
