@@ -485,3 +485,57 @@ export function OTCFundsDesktopSkeleton() {
     </div>
   );
 }
+
+/* ==================== 基金持仓表 ==================== */
+
+/** 基金重仓股/完整持仓表格骨架（2026-07-03 新增） */
+export function FundHoldingsTableSkeleton() {
+  return (
+    <div className="space-y-3">
+      {/* 搜索框 + 展开按钮 */}
+      <div className="flex items-center gap-2">
+        <Skeleton className="h-9 w-full max-w-xs" />
+        <Skeleton className="h-9 w-24" />
+      </div>
+      {/* 表格 */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b text-xs text-muted-foreground">
+              <th className="pb-2 text-left font-medium">代码</th>
+              <th className="pb-2 text-left font-medium">名称</th>
+              <th className="pb-2 text-right font-medium">持仓占比</th>
+              <th className="pb-2 text-right font-medium">持股数(万股)</th>
+              <th className="pb-2 text-right font-medium">最新价</th>
+              <th className="pb-2 text-right font-medium">涨跌幅</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <tr key={i} className="border-b last:border-0">
+                <td className="py-2">
+                  <Skeleton className="h-4 w-16" />
+                </td>
+                <td className="py-2">
+                  <Skeleton className="h-4 w-24" />
+                </td>
+                <td className="py-2 text-right">
+                  <Skeleton className="ml-auto h-4 w-14" />
+                </td>
+                <td className="py-2 text-right">
+                  <Skeleton className="ml-auto h-4 w-20" />
+                </td>
+                <td className="py-2 text-right">
+                  <Skeleton className="ml-auto h-4 w-16" />
+                </td>
+                <td className="py-2 text-right">
+                  <Skeleton className="ml-auto h-4 w-12" />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

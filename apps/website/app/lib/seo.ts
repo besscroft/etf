@@ -224,6 +224,62 @@ export function buildBreadcrumbJsonLd(items: BreadcrumbItem[]): MetaDescriptor {
 }
 
 /**
+ * 股票详情页 JSON-LD：Quotation（schema.org 的金融报价类型）
+ * 用于股票详情页的语义化标记：让搜索引擎在搜索结果中展示股票名称、代码、价格、涨跌。
+ */
+export interface StockJsonLdInput {
+  code: string;
+  name: string;
+  price?: number;
+  changePercent?: number;
+  marketLabel?: string;
+  path: string;
+}
+
+export function buildStockJsonLd(stock: StockJsonLdInput): MetaDescriptor {
+  const url = absUrl(stock.path);
+  const data: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "Quotation",
+    name: stock.name,
+    tickerSymbol: stock.code,
+    url,
+  };
+  // 可选价格字段
+  if (typeof stock.price === "number" && stock.price > 0) {
+    data.price = stock.price.toFixed(2);
+  }
+  if (typeof stock.changePercent === "number" && stock.price && stock.price > 0) {
+    // 昨收 = 当前价 - 涨跌额
+    const change = (stock.price * stock.changePercent) / (100 + stock.changePercent);
+    const prevClose = stock.price - change;
+    data.priceCurrency = "CNY";
+    data.priceValidUntil = new Date().toISOString();
+    if (prevClose > 0) {
+      // schema.org Quotation 不直接支持涨跌额，但可以用 additionalProperty 表达
+      data.additionalProperty = [
+        {
+          "@type": "PropertyValue",
+          name: "涨跌幅",
+          value: `${stock.changePercent.toFixed(2)}%`,
+        },
+        {
+          "@type": "PropertyValue",
+          name: "昨收价",
+          value: prevClose.toFixed(2),
+        },
+        {
+          "@type": "PropertyValue",
+          name: "市场",
+          value: stock.marketLabel ?? "—",
+        },
+      ];
+    }
+  }
+  return { "script:ld+json": data as any };
+}
+
+/**
  * FAQPage JSON-LD
  * 基金详情页的「常见问题」语义化标记：Google 富媒体搜索会展开成可点击的问答块，
  * 占据搜索结果大块视觉空间，显著提升点击率。

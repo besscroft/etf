@@ -29,7 +29,7 @@ interface CacheEntry<T> {
 const cache = new Map<string, CacheEntry<unknown>>();
 
 /** 通用缓存获取，默认缓存5分钟。bypassCache=true 时跳过缓存读，但仍会写新结果 */
-async function cachedFetch<T>(
+export async function cachedFetch<T>(
   key: string,
   fetcher: () => Promise<T>,
   ttlMs = 5 * 60 * 1000,
@@ -86,7 +86,10 @@ async function fetchTextGBK(url: string, init?: RequestInit): Promise<string> {
 }
 
 /** 通用 fetchJson 封装，timeoutMs 透传给 fetchText */
-async function fetchJson<T>(url: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
+export async function fetchJson<T>(
+  url: string,
+  init?: RequestInit & { timeoutMs?: number },
+): Promise<T> {
   const text = await fetchText(url, {
     ...init,
     headers: {
@@ -677,14 +680,17 @@ export interface FundHeavyData {
   };
   // 业绩走势（全量净值趋势）
   navTrend: Array<{ date: string; nav: number; dailyReturn: number }>;
-  // 重仓股行情
+  // 重仓股行情（扩展为完整持仓，2026-07-03 改造：top 10 → 全部）
   topHoldings: Array<{
     symbol: string;
     name: string;
     price: number;
     changePercent: number;
     holdingRatio: number; // 持仓占比(%)
+    shareCount: number | null; // 持股数量(万股)
   }>;
+  /** 持仓总数（topHoldings.length 可能为 0 走兜底；用来给 UI 展示「共 X 只持仓」） */
+  holdingsTotal: number;
   // 历史净值（最近30条）
   navHistory: Array<{
     date: string;
@@ -885,6 +891,7 @@ export async function getFundHeavyData(
         },
         navTrend: [],
         topHoldings: [],
+        holdingsTotal: 0,
         navHistory: [],
         maxDrawdown: null,
         monthlyReturns: [],
@@ -965,60 +972,140 @@ export async function getFundHeavyData(
           }
         }
 
-        // 重仓股代码
+        // 重仓股代码（已扩展为完整持仓：2026-07-03 改造）
+        // - pingzhongdata.stockCodes 包含基金持有的所有股票代码（A 股 6 位 + 港股 5 位 + 美股字母）
+        // - FundArchivesDatas?type=jjcc&topline=200 拿全量持仓的占比 / 持股数 / 名称
+        // - A 股实时价走 push2 批量接口；非 A 股（美股）走 sina hq.sinajs.cn 兼容旧路径
         const stockCodes = extractJsArray<string>(pingzhongText, "stockCodes");
-        if (stockCodes) {
-          const symbols = stockCodes
-            .map((s) => s.replace(/\d+$/, ""))
-            .filter((s) => s.length > 0)
-            .slice(0, 10);
-
-          const holdingMap = new Map<string, number>();
+        if (stockCodes && stockCodes.length > 0) {
+          // 持仓明细：code → { ratio, shareCount, name }
+          const holdingMap = new Map<
+            string,
+            { ratio: number; shareCount: number | null; name: string }
+          >();
           try {
             const holdingText = await fetchText(
-              `https://fund.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${code}&topline=10&year=&month=&rt=0.${Date.now()}`,
+              `https://fund.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${code}&topline=200&year=&month=&rt=0.${Date.now()}`,
               { headers: { Referer: "https://fundf10.eastmoney.com/" } },
             ).catch(() => "");
             if (holdingText) {
-              const ratioMatches = [
-                ...holdingText.matchAll(/class='(?:tor|tol)'>\s*([\d.]+)%\s*<\/td>/g),
+              // 按行解析（每行是一只股票）
+              // FundArchivesDatas 表格行结构：<tr><td>序号</td><td>代码</td><td><a>名称</a></td><td class='tor'>占比%</td><td class='tol'>持股数</td>...
+              // 改用宽松的行级匹配：找所有 code=XXX 的链接 + 名称 + 占比 + 持股数
+              const rowMatches = [
+                ...holdingText.matchAll(
+                  /code=([0-9A-Z]+)[^>]*>([^<]+)<\/a>[\s\S]*?class='tor'\s*>\s*([\d.]+)%[\s\S]*?class='tol'\s*>\s*([\d.,]+)/g,
+                ),
               ];
-              const codeMatches = [...holdingText.matchAll(/code=(\w+)[&"']/g)];
-              for (let i = 0; i < Math.min(codeMatches.length, ratioMatches.length); i++) {
-                holdingMap.set(
-                  codeMatches[i][1].toUpperCase(),
-                  parseFloat(ratioMatches[i][1]) || 0,
-                );
+              for (const m of rowMatches) {
+                const c = m[1].toUpperCase();
+                holdingMap.set(c, {
+                  ratio: parseFloat(m[3]) || 0,
+                  shareCount: parseFloat(String(m[4]).replace(/,/g, "")) || null,
+                  name: m[2].trim(),
+                });
+              }
+              // 兼容旧版：只有 tor 类没有 tol 的退化情况（用 name+ratio 兜底）
+              if (holdingMap.size === 0) {
+                const codeMatches = [...holdingText.matchAll(/code=(\w+)[&"']/g)];
+                const ratioMatches = [
+                  ...holdingText.matchAll(/class='(?:tor|tol)'>\s*([\d.]+)%\s*<\/td>/g),
+                ];
+                const nameMatches = [...holdingText.matchAll(/code=\w+[^>]*>([^<]+)<\/a>/g)];
+                for (let i = 0; i < codeMatches.length; i++) {
+                  holdingMap.set(codeMatches[i][1].toUpperCase(), {
+                    ratio: parseFloat(ratioMatches[i]?.[1] ?? "0") || 0,
+                    shareCount: null,
+                    name: nameMatches[i]?.[1]?.trim() ?? codeMatches[i][1],
+                  });
+                }
               }
             }
           } catch {
             // 忽略
           }
 
-          if (symbols.length > 0) {
-            const sinaCodes = symbols.map((s) => `gb_${s.toLowerCase()}`).join(",");
-            const stockText = await fetchTextGBK(`http://hq.sinajs.cn/list=${sinaCodes}`, {
-              headers: { Referer: "http://finance.sina.com.cn/" },
-            }).catch(() => "");
+          // 区分 A 股 / 非 A 股，分类拉实时价
+          const aShareCodes: string[] = [];
+          const nonAShareCodes: string[] = [];
+          for (const c of stockCodes) {
+            if (/^\d{6}$/.test(c)) aShareCodes.push(c);
+            else nonAShareCodes.push(c);
+          }
 
-            if (stockText) {
-              const lines = stockText.split("\n").filter((l) => l.trim());
-              for (const line of lines) {
-                const m = line.match(/var hq_str_gb_(\w+)="([^"]*)"/);
-                if (m && m[2]) {
-                  const parts = m[2].split(",");
-                  const sym = m[1].toUpperCase();
-                  result.topHoldings.push({
-                    symbol: sym,
-                    name: parts[0] || sym,
-                    price: parseFloat(parts[1]) || 0,
-                    changePercent: parseFloat(parts[22]) || 0,
-                    holdingRatio: holdingMap.get(sym) || 0,
-                  });
-                }
+          // A 股：批量拉 push2 实时价
+          const aShareQuotes = new Map<
+            string,
+            { name: string; price: number; changePercent: number }
+          >();
+          if (aShareCodes.length > 0) {
+            try {
+              // 静态 import（use-stock-poll / stock.$code.tsx 也用了，构建期已被预加载，
+              // 改动态 import 反而会被 Vite 警告 "ineffective dynamic import"）
+              const { getStockQuotesBatch } = await import("./stock-data");
+              const batch = await getStockQuotesBatch(aShareCodes);
+              for (const [code, q] of batch) {
+                aShareQuotes.set(code, {
+                  name: q.name,
+                  price: q.price,
+                  changePercent: q.changePercent,
+                });
               }
+            } catch {
+              // 拉取失败时 A 股 name 从 holdingMap 拿，price/changePercent 为 0
             }
           }
+
+          // 非 A 股（美股）：sina hq.sinajs.cn 兼容旧路径
+          const nonAShareSymbols = nonAShareCodes
+            .map((s) => s.replace(/\d+$/, ""))
+            .filter((s) => s.length > 0);
+          const nonAShareQuotes = new Map<
+            string,
+            { name: string; price: number; changePercent: number }
+          >();
+          if (nonAShareSymbols.length > 0) {
+            try {
+              const sinaCodes = nonAShareSymbols.map((s) => `gb_${s.toLowerCase()}`).join(",");
+              const stockText = await fetchTextGBK(`http://hq.sinajs.cn/list=${sinaCodes}`, {
+                headers: { Referer: "http://finance.sina.com.cn/" },
+              });
+              if (stockText) {
+                const lines = stockText.split("\n").filter((l) => l.trim());
+                for (const line of lines) {
+                  const m = line.match(/var hq_str_gb_(\w+)="([^"]*)"/);
+                  if (m && m[2]) {
+                    const parts = m[2].split(",");
+                    nonAShareQuotes.set(m[1].toUpperCase(), {
+                      name: parts[0] || m[1],
+                      price: parseFloat(parts[1]) || 0,
+                      changePercent: parseFloat(parts[22]) || 0,
+                    });
+                  }
+                }
+              }
+            } catch {
+              // 忽略
+            }
+          }
+
+          // 合并：按 stockCodes 原顺序产出（保持与披露季报一致）
+          for (const code of stockCodes) {
+            const upper = code.toUpperCase();
+            const meta = holdingMap.get(upper);
+            const quote = /^\d{6}$/.test(code)
+              ? aShareQuotes.get(code)
+              : nonAShareQuotes.get(upper);
+            result.topHoldings.push({
+              symbol: code,
+              name: meta?.name || quote?.name || code,
+              price: quote?.price ?? 0,
+              changePercent: quote?.changePercent ?? 0,
+              holdingRatio: meta?.ratio ?? 0,
+              shareCount: meta?.shareCount ?? null,
+            });
+          }
+          result.holdingsTotal = stockCodes.length;
         }
 
         // 解析盘中实时估值

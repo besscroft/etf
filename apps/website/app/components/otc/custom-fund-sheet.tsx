@@ -4,7 +4,7 @@
  * 80vh 底部抽屉风格，参考 fund-search-sheet.tsx：
  * - 拖拽抓手 + ESC 关闭 + 自动聚焦
  * - 6 位代码 + 名称 + 分类下拉 + 保存 / 保存并加入 双按钮
- * - 错误提示内联展示
+ * - 错误提示走 sonner toast（2026-07-03 改造：移除内联错误展示）
  * - 复用 ~/stores/custom-otc-funds 的 addFund
  *
  * 与 custom-fund-panel.tsx 的关系：
@@ -13,6 +13,7 @@
  */
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { motion, AnimatePresence, type PanInfo } from "motion/react";
+import { toast } from "sonner";
 import { BookmarkPlus, X, Save, Plus } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { DURATION, EASING } from "~/lib/motion";
@@ -52,7 +53,6 @@ export function CustomFundSheet({
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [category, setCategory] = useState<OTCCategory>(defaultCategory);
-  const [error, setError] = useState("");
   const [dragY, setDragY] = useState(0);
   const codeInputRef = useRef<HTMLInputElement>(null);
 
@@ -61,7 +61,6 @@ export function CustomFundSheet({
     if (open) {
       setCode("");
       setName("");
-      setError("");
       setCategory(defaultCategory);
       setDragY(0);
       const timer = setTimeout(() => codeInputRef.current?.focus(), 200);
@@ -96,15 +95,14 @@ export function CustomFundSheet({
   const saveFund = ({ addToCompare }: { addToCompare: boolean }) => {
     const normalizedCode = normalizeFundCode(code);
     if (!isValidFundCode(normalizedCode)) {
-      setError("请输入 6 位基金代码");
+      toast.error("请输入 6 位基金代码");
       return;
     }
     const fund = addCustomFund({ code: normalizedCode, name, category });
     if (!fund) {
-      setError("基金代码格式不正确");
+      toast.error("基金代码格式不正确");
       return;
     }
-    setError("");
     if (addToCompare && onSaveAndAdd) {
       onSaveAndAdd(fund.code);
       onOpenChange(false);
@@ -185,7 +183,6 @@ export function CustomFundSheet({
                     value={code}
                     onChange={(event) => {
                       setCode(normalizeFundCode(event.target.value));
-                      setError("");
                     }}
                     inputMode="numeric"
                     maxLength={6}
@@ -221,12 +218,6 @@ export function CustomFundSheet({
                     ))}
                   </select>
                 </label>
-
-                {error && (
-                  <p className="text-xs text-destructive" role="alert">
-                    {error}
-                  </p>
-                )}
 
                 {reachedLimit && (
                   <p className="text-xs text-amber-600 dark:text-amber-400">

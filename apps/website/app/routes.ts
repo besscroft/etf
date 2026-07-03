@@ -4,6 +4,7 @@ export default [
   index("routes/home.tsx"),
   route("api/market-data", "routes/api.market-data.ts"),
   route("fund/:code", "routes/fund.$code.tsx"),
+  route("stock/:code", "routes/stock.$code.tsx"),
   route("cn/funds", "routes/compare.tsx"),
   route("cn/fund", "routes/analysis.tsx"),
   route("otc-funds", "routes/otc-funds.tsx"),

@@ -13,6 +13,7 @@
  * />
  */
 import { useCallback, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 import { Button } from "~/components/ui/button";
 import { motion, AnimatePresence } from "motion/react";
 import { Download, Share2, X, Loader2 } from "lucide-react";
@@ -196,12 +197,6 @@ export function ShareExport({
         )}
         {label}
       </Button>
-
-      {error && (
-        <p className="mt-1 text-xs text-destructive" data-exclude-from-export="true">
-          {error}
-        </p>
-      )}
 
       <AnimatePresence>
         {isOpen && imageUrl && (

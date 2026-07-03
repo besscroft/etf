@@ -29,6 +29,7 @@ import { FundDetailHeavySkeleton } from "~/components/ui/skeletons";
 import { Skeleton } from "~/components/ui/skeleton";
 import { buildMeta } from "~/lib/seo";
 import { FundNavTrendChart, HoldingsPieChart } from "~/components/charts";
+import { HoldingsTable } from "~/components/stock/holdings-table";
 
 export function meta({ data, params }: Route.MetaArgs) {
   // 同步从 loader 拿缓存命中状态，给不同情况发不同 SEO 默认值
@@ -441,66 +442,27 @@ function FundHeavyContent({ heavy, basic }: { heavy: FundHeavyData; basic: FundB
         </CardContent>
       </Card>
 
-      {/* ====== 重仓股行情 ====== */}
+      {/* ====== 持仓股票 ====== */}
       <Card className="mb-6">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm md:text-base">
             <Users className="size-4 text-purple-500" />
-            重仓股行情
+            持仓股票
           </CardTitle>
         </CardHeader>
         <CardContent>
           {heavy.topHoldings.length > 0 ? (
             <div className="space-y-4">
               <HoldingsPieChart holdings={heavy.topHoldings} />
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-xs text-muted-foreground">
-                      <th className="pb-2 text-left font-medium">代码</th>
-                      <th className="pb-2 text-left font-medium">名称</th>
-                      <th className="pb-2 text-right font-medium">持仓占比</th>
-                      <th className="pb-2 text-right font-medium">最新价</th>
-                      <th className="pb-2 text-right font-medium">涨跌幅</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {heavy.topHoldings.map((stock) => (
-                      <tr key={stock.symbol} className="border-b last:border-0">
-                        <td className="py-2 font-mono text-xs">{stock.symbol}</td>
-                        <td className="py-2">{stock.name}</td>
-                        <td className="py-2 text-right">
-                          {stock.holdingRatio > 0 ? (
-                            <span className="font-medium">{stock.holdingRatio.toFixed(2)}%</span>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                        <td className="py-2 text-right">
-                          {stock.price > 0 ? `$${stock.price.toFixed(2)}` : "—"}
-                        </td>
-                        <td className="py-2 text-right">
-                          <span
-                            className={
-                              stock.changePercent > 0
-                                ? "text-red-500"
-                                : stock.changePercent < 0
-                                  ? "text-emerald-500"
-                                  : "text-muted-foreground"
-                            }
-                          >
-                            {stock.changePercent > 0 ? "+" : ""}
-                            {stock.changePercent.toFixed(2)}%
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <HoldingsTable
+                holdings={heavy.topHoldings}
+                total={heavy.holdingsTotal || heavy.topHoldings.length}
+                initialVisible={10}
+                pageSize={50}
+              />
             </div>
           ) : (
-            <p className="text-center text-sm text-muted-foreground">暂无重仓股数据</p>
+            <p className="text-center text-sm text-muted-foreground">暂无持仓数据</p>
           )}
         </CardContent>
       </Card>

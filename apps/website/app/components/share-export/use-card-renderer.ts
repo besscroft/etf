@@ -12,6 +12,8 @@
  * - 截图前断言 holder 已渲染出子节点，防止白图
  * - pixelRatio=3 保证清晰度
  * - 截图完成后立即清理 DOM，避免内存泄漏
+ *
+ * 错误处理：失败直接 throw，调用方用 sonner toast 展示。
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
@@ -22,15 +24,12 @@ import { CARD_WIDTH } from "./share-card-canvas";
 interface UseCardRendererResult {
   /** 当前是否正在生成图片 */
   isGenerating: boolean;
-  /** 错误信息 */
-  error: string | null;
   /** 渲染指定节点并截图 */
   renderToImage: (node: ReactNode) => Promise<string>;
 }
 
 export function useCardRenderer(): UseCardRendererResult {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   // 持有隐藏容器的 root 句柄，便于卸载
   const rootRef = useRef<ReturnType<typeof createRoot> | null>(null);
   const holderRef = useRef<HTMLDivElement | null>(null);
@@ -75,7 +74,6 @@ export function useCardRenderer(): UseCardRendererResult {
   const renderToImage = useCallback(
     async (node: ReactNode): Promise<string> => {
       setIsGenerating(true);
-      setError(null);
       try {
         const holder = ensureHolder();
 
@@ -116,10 +114,6 @@ export function useCardRenderer(): UseCardRendererResult {
         });
 
         return dataUrl;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "未知错误";
-        setError(`图片生成失败：${msg}`);
-        throw err;
       } finally {
         // 完成后清理隐藏 DOM
         cleanup();
@@ -129,5 +123,5 @@ export function useCardRenderer(): UseCardRendererResult {
     [ensureHolder, cleanup],
   );
 
-  return { isGenerating, error, renderToImage };
+  return { isGenerating, renderToImage };
 }

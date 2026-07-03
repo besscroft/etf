@@ -6,6 +6,7 @@ import {
   Scripts,
   ScrollRestoration,
 } from "react-router";
+import { Toaster } from "sonner";
 
 import type { Route } from "./+types/root";
 import "./app.css";
@@ -72,6 +73,19 @@ gtag('config', '${GA_MEASUREMENT_ID}');`,
       </head>
       <body>
         <MenuProvider config={mainMenu}>{children}</MenuProvider>
+        {/* 全局 Sonner Toaster：所有 toast.error / toast.success / toast() 都在这里渲染。
+            position=top-center 是中文站常见选择（顶部更醒目）；richColors 让 success/error/warning 自动着色。 */}
+        <Toaster
+          position="top-center"
+          richColors
+          closeButton
+          duration={4000}
+          toastOptions={{
+            classNames: {
+              toast: "font-sans",
+            },
+          }}
+        />
         <ScrollRestoration />
         <Scripts />
       </body>
