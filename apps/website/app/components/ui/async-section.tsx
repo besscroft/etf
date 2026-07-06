@@ -19,7 +19,7 @@ import { Await } from "react-router";
  * - `resolve`: loader 中 defer() 产出的 Promise（或已 resolved 的值，便于复用）
  * - `fallback`: 加载阶段显示的占位（推荐传 Skeleton）
  * - `children`: render-prop 形式，data 已是 resolved 值（不会再变）
- * - `errorElement`: 可选自定义错误兜底
+ * - `errorElement`: 可选自定义错误兜底；默认只降级当前区块，传 null 可静默隐藏错误
  *
  * 设计说明：组件本体不写泛型（与 ReactNode props 转发不兼容），泛型由调用点的
  * `(data) => ...` 推断。这里把 `children` 的 data 类型声明为 `unknown`，调用方用
@@ -36,7 +36,23 @@ interface AsyncSectionProps {
   errorElement?: React.ReactNode;
 }
 
-function AsyncSection({ resolve, fallback, children, errorElement }: AsyncSectionProps) {
+function DefaultAsyncSectionError() {
+  return (
+    <div
+      role="status"
+      className="rounded-md border border-dashed border-border bg-muted/20 p-3 text-sm text-muted-foreground"
+    >
+      数据暂时不可用，请稍后刷新。
+    </div>
+  );
+}
+
+function AsyncSection({
+  resolve,
+  fallback,
+  children,
+  errorElement = <DefaultAsyncSectionError />,
+}: AsyncSectionProps) {
   // 如果上游 loader 直接返回了值（非 Promise），跳过 Suspense 直接渲染
   if (!(resolve instanceof Promise)) {
     return <>{children(resolve)}</>;

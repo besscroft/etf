@@ -569,69 +569,131 @@ export interface HomeFundsData {
   fetchedAt: string;
 }
 
+function createEmptyHomeIndex() {
+  return { price: 0, change: 0, changePercent: 0 };
+}
+
+function createEmptyHomeCoreData(): HomeCoreData {
+  return {
+    nasdaq: createEmptyHomeIndex(),
+    sp500: createEmptyHomeIndex(),
+    dowJones: createEmptyHomeIndex(),
+    nasdaq100: createEmptyHomeIndex(),
+  };
+}
+
+function createEmptyHomeIndicatorsData(): HomeIndicatorsData {
+  return {
+    vix: { value: 0, change: null, changePercent: null },
+    fearGreed: {
+      value: 50,
+      rating: "Neutral",
+      previousClose: null,
+      oneWeekAgo: null,
+      oneMonthAgo: null,
+    },
+    sp500PE: { value: null, source: "unavailable" },
+    nasdaq100PE: { value: null, source: "unavailable" },
+  };
+}
+
+function createEmptyHomeFundsData(): HomeFundsData {
+  return { qdiiFunds: [], fetchedAt: new Date().toISOString() };
+}
+
+function logHomeDataFallback(scope: string, error: unknown): void {
+  if (typeof window === "undefined") {
+    console.error(`[market-data] ${scope} fallback`, error);
+  }
+}
+
 /** 完整首页数据（向后兼容 api.market-data 路由） */
 export interface MarketData extends HomeCoreData, HomeIndicatorsData, HomeFundsData {}
 
 /** 首页首屏核心指数（独立 defer 单元，渲染首屏 4 个大盘卡片） */
 export async function getHomeCoreData(): Promise<HomeCoreData> {
-  const [indices, nasdaq100Stock] = await Promise.all([
-    getSinaIndexData(["int_nasdaq", "int_sp500", "int_dji"]),
-    getSinaUSStock("ndx"),
-  ]);
+  try {
+    const [indices, nasdaq100Stock] = await Promise.all([
+      getSinaIndexData(["int_nasdaq", "int_sp500", "int_dji"]),
+      getSinaUSStock("ndx"),
+    ]);
 
-  const nasdaq = indices.find((i) => i.code === "int_nasdaq");
-  const sp500 = indices.find((i) => i.code === "int_sp500");
-  const dowJones = indices.find((i) => i.code === "int_dji");
+    const nasdaq = indices.find((i) => i.code === "int_nasdaq");
+    const sp500 = indices.find((i) => i.code === "int_sp500");
+    const dowJones = indices.find((i) => i.code === "int_dji");
 
-  return {
-    nasdaq: {
-      price: nasdaq?.price ?? 0,
-      change: nasdaq?.change ?? 0,
-      changePercent: nasdaq?.changePercent ?? 0,
-    },
-    sp500: {
-      price: sp500?.price ?? 0,
-      change: sp500?.change ?? 0,
-      changePercent: sp500?.changePercent ?? 0,
-    },
-    dowJones: {
-      price: dowJones?.price ?? 0,
-      change: dowJones?.change ?? 0,
-      changePercent: dowJones?.changePercent ?? 0,
-    },
-    nasdaq100: {
-      price: nasdaq100Stock.price,
-      change: nasdaq100Stock.price - nasdaq100Stock.prevClose,
-      changePercent: nasdaq100Stock.changePercent,
-    },
-  };
+    return {
+      nasdaq: {
+        price: nasdaq?.price ?? 0,
+        change: nasdaq?.change ?? 0,
+        changePercent: nasdaq?.changePercent ?? 0,
+      },
+      sp500: {
+        price: sp500?.price ?? 0,
+        change: sp500?.change ?? 0,
+        changePercent: sp500?.changePercent ?? 0,
+      },
+      dowJones: {
+        price: dowJones?.price ?? 0,
+        change: dowJones?.change ?? 0,
+        changePercent: dowJones?.changePercent ?? 0,
+      },
+      nasdaq100: {
+        price: nasdaq100Stock.price,
+        change: nasdaq100Stock.price - nasdaq100Stock.prevClose,
+        changePercent: nasdaq100Stock.changePercent,
+      },
+    };
+  } catch (error) {
+    logHomeDataFallback("getHomeCoreData", error);
+    return createEmptyHomeCoreData();
+  }
 }
 
 /** 首页市场情绪指标（独立 defer 单元，渲染 VIX/恐慌贪婪/PE 卡片） */
 export async function getHomeIndicatorsData(): Promise<HomeIndicatorsData> {
-  const [vix, fearGreed, sp500PE, nasdaq100PE] = await Promise.all([
-    getVIX(),
-    getFearGreedIndex(),
-    getSp500PE(),
-    getNasdaq100PE(),
-  ]);
-  return { vix, fearGreed, sp500PE, nasdaq100PE };
+  try {
+    const [vix, fearGreed, sp500PE, nasdaq100PE] = await Promise.all([
+      getVIX(),
+      getFearGreedIndex(),
+      getSp500PE(),
+      getNasdaq100PE(),
+    ]);
+    return { vix, fearGreed, sp500PE, nasdaq100PE };
+  } catch (error) {
+    logHomeDataFallback("getHomeIndicatorsData", error);
+    return createEmptyHomeIndicatorsData();
+  }
 }
 
 /** 首页 QDII 基金列表（独立 defer 单元，渲染基金表格/卡片） */
 export async function getHomeFundsData(): Promise<HomeFundsData> {
-  const qdiiFunds = await getAllQDIIFundData();
-  return { qdiiFunds, fetchedAt: new Date().toISOString() };
+  try {
+    const qdiiFunds = await getAllQDIIFundData();
+    return { qdiiFunds, fetchedAt: new Date().toISOString() };
+  } catch (error) {
+    logHomeDataFallback("getHomeFundsData", error);
+    return createEmptyHomeFundsData();
+  }
 }
 
 /** 完整首页数据（向后兼容 api.market-data 路由） */
 export async function getMarketData(): Promise<MarketData> {
-  const [core, indicators, funds] = await Promise.all([
-    getHomeCoreData(),
-    getHomeIndicatorsData(),
-    getHomeFundsData(),
-  ]);
-  return { ...core, ...indicators, ...funds };
+  try {
+    const [core, indicators, funds] = await Promise.all([
+      getHomeCoreData(),
+      getHomeIndicatorsData(),
+      getHomeFundsData(),
+    ]);
+    return { ...core, ...indicators, ...funds };
+  } catch (error) {
+    logHomeDataFallback("getMarketData", error);
+    return {
+      ...createEmptyHomeCoreData(),
+      ...createEmptyHomeIndicatorsData(),
+      ...createEmptyHomeFundsData(),
+    };
+  }
 }
 
 /** 批量获取基金对比数据（并行获取多只基金详情） */

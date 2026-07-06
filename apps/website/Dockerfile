@@ -1,22 +1,38 @@
-FROM node:20-alpine AS development-dependencies-env
-COPY . /app
-WORKDIR /app
-RUN npm ci
+# syntax=docker/dockerfile:1
 
-FROM node:20-alpine AS production-dependencies-env
-COPY ./package.json package-lock.json /app/
+FROM node:22-alpine AS deps
 WORKDIR /app
-RUN npm ci --omit=dev
+RUN corepack enable
 
-FROM node:20-alpine AS build-env
-COPY . /app/
-COPY --from=development-dependencies-env /app/node_modules /app/node_modules
-WORKDIR /app
-RUN npm run build
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml vite.config.ts tsconfig.json ./
+COPY apps/website/package.json apps/website/package.json
+RUN pnpm install --frozen-lockfile
 
-FROM node:20-alpine
-COPY ./package.json package-lock.json /app/
-COPY --from=production-dependencies-env /app/node_modules /app/node_modules
-COPY --from=build-env /app/build /app/build
+FROM deps AS build
+COPY . .
+RUN pnpm exec vp run website#build
+
+FROM node:22-alpine AS production-deps
 WORKDIR /app
-CMD ["npm", "run", "start"]
+RUN corepack enable
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/website/package.json apps/website/package.json
+RUN pnpm install --prod --frozen-lockfile
+
+FROM node:22-alpine AS runner
+ENV NODE_ENV=production
+WORKDIR /app
+RUN corepack enable
+
+COPY --from=production-deps /app/node_modules ./node_modules
+COPY --from=production-deps /app/apps/website/node_modules ./apps/website/node_modules
+COPY --from=production-deps /app/package.json ./package.json
+COPY --from=production-deps /app/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=production-deps /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=production-deps /app/apps/website/package.json ./apps/website/package.json
+COPY --from=build /app/apps/website/build ./apps/website/build
+
+WORKDIR /app/apps/website
+EXPOSE 3000
+CMD ["pnpm", "exec", "react-router-serve", "./build/server/index.js"]

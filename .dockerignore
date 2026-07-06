@@ -1,0 +1,17 @@
+.git
+.gitignore
+.idea
+.vscode
+.DS_Store
+
+node_modules
+.pnpm-store
+**/node_modules
+**/.react-router
+**/build
+**/dist
+**/dist-ssr
+
+*.log
+*.local
+apps/website/build.zip

@@ -1,87 +1,55 @@
-# Welcome to React Router!
+# ETFVoid Website
 
-A modern, production-ready template for building full-stack React applications using React Router.
+React Router SSR website for ETFVoid, built inside the repository's Vite+ monorepo.
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/remix-run/react-router-templates/tree/main/default)
+## Development
 
-## Features
-
-- 🚀 Server-side rendering
-- ⚡️ Hot Module Replacement (HMR)
-- 📦 Asset bundling and optimization
-- 🔄 Data loading and mutations
-- 🔒 TypeScript by default
-- 🎉 TailwindCSS for styling
-- 📖 [React Router docs](https://reactrouter.com/)
-
-## Getting Started
-
-### Installation
-
-Install the dependencies:
+Install dependencies from the repository root:
 
 ```bash
-npm install
+vp install
 ```
 
-### Development
-
-Start the development server with HMR:
+Start the website dev server:
 
 ```bash
-npm run dev
+vp run website#dev
 ```
-
-Your application will be available at `http://localhost:5173`.
 
 ## Building for Production
 
 Create a production build:
 
 ```bash
-npm run build
+vp run website#build
 ```
+
+The output is written to `apps/website/build`.
 
 ## Deployment
 
 ### Docker Deployment
 
-To build and run using Docker:
+Build from the repository root so the Dockerfile can use the workspace lockfile and Vite+ configuration:
 
 ```bash
-docker build -t my-app .
+docker build -f apps/website/Dockerfile -t etf-website .
 
-# Run the container
-docker run -p 3000:3000 my-app
+docker run --rm -p 3000:3000 etf-website
 ```
 
-The containerized application can be deployed to any platform that supports Docker, including:
-
-- AWS ECS
-- Google Cloud Run
-- Azure Container Apps
-- Digital Ocean App Platform
-- Fly.io
-- Railway
+The container runs `react-router-serve ./build/server/index.js` from `apps/website`.
 
 ### DIY Deployment
 
-If you're familiar with deploying Node applications, the built-in app server is production-ready.
+If you're deploying as a Node application, build with Vite+ first and deploy the generated website build output together with the workspace package manifests and production dependencies.
 
-Make sure to deploy the output of `npm run build`
-
-```
-├── package.json
-├── package-lock.json (or pnpm-lock.yaml, or bun.lockb)
-├── build/
-│   ├── client/    # Static assets
-│   └── server/    # Server-side code
+```text
+apps/website/build/
+├── client/    # Static assets
+└── server/    # Server-side code
 ```
 
 ## Styling
 
-This template comes with [Tailwind CSS](https://tailwindcss.com/) already configured for a simple default starting experience. You can use whatever CSS framework you prefer.
-
----
-
-Built with ❤️ using React Router.
+This app uses Tailwind CSS and shared local UI components.
