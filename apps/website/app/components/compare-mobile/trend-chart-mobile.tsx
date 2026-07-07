@@ -11,7 +11,7 @@ interface TrendChartMobileProps {
 
 export function TrendChartMobile({
   funds,
-  detailHref = (code) => `/fund/${code}`,
+  detailHref = (code) => `/otc-fund?code=${code}`,
 }: TrendChartMobileProps) {
   const defaultRange: RangeKey = "1y";
   const fundsWithData = funds.filter((fund) => !fund.error && fund.navTrend?.length >= 2);

@@ -18,15 +18,26 @@
  * - 6xxxxx → 1.SH（沪 A）
  * - 0xxxxx, 3xxxxx → 0.SZ（深 A / 创业板）
  * - 4xxxxx, 8xxxxx → 0.BJ（北交所）
- * - 5xxxxx → 1.SH（沪 ETF/封闭基金，本期同沪 A 走）
+ * - 5xxxxx → 1.SH（沪 ETF/封闭基金）
+ * - 1xxxxx → 0.SZ（深 ETF/LOF 等场内基金）
  * - 5 位数字 → 不支持（港股）
  * - 字母 → 不支持
  */
 
 import { cachedFetch, fetchJson } from "./market-data";
 
-/** 支持的 A 股市场 */
+/** 支持的境内市场 */
 export type AShareMarket = "SH" | "SZ" | "BJ";
+
+/** 境内行情品种 */
+export type DomesticSecurityKind = "stock" | "etf";
+
+export interface DomesticSecurityMeta {
+  secid: number;
+  prefix: AShareMarket;
+  marketLabel: string;
+  kind: DomesticSecurityKind;
+}
 
 /** 实时报价 */
 export interface StockQuote {
@@ -63,6 +74,9 @@ export interface KLinePoint {
 
 /** K线周期 */
 export type KLinePeriod = "1d" | "1w" | "1m";
+
+/** 行情图周期：分时 + K 线 */
+export type MarketChartPeriod = "minute" | KLinePeriod;
 
 /** 多周期 K 线数据 */
 export type StockKLineMap = Record<KLinePeriod, KLinePoint[]>;
@@ -117,28 +131,38 @@ export interface StockNewsItem {
  * 通过代码前缀识别 A 股市场
  * 返回 null 表示不支持（港股 / 美股 / 非法）
  */
-export function detectAShareMarket(
-  code: string,
-): { secid: number; prefix: AShareMarket; marketLabel: string } | null {
+export function detectDomesticSecurity(code: string): DomesticSecurityMeta | null {
   if (!/^\d{6}$/.test(code)) return null;
   const c = code;
-  if (c.startsWith("6") || c.startsWith("5") || c.startsWith("9")) {
-    return { secid: 1, prefix: "SH", marketLabel: "上海" };
+  if (c.startsWith("6") || c.startsWith("9")) {
+    return { secid: 1, prefix: "SH", marketLabel: "上海", kind: "stock" };
+  }
+  if (c.startsWith("5")) {
+    return { secid: 1, prefix: "SH", marketLabel: "上海", kind: "etf" };
   }
   if (c.startsWith("0") || c.startsWith("3")) {
-    return { secid: 0, prefix: "SZ", marketLabel: "深圳" };
+    return { secid: 0, prefix: "SZ", marketLabel: "深圳", kind: "stock" };
+  }
+  if (c.startsWith("1")) {
+    return { secid: 0, prefix: "SZ", marketLabel: "深圳", kind: "etf" };
   }
   if (c.startsWith("4") || c.startsWith("8")) {
-    return { secid: 0, prefix: "BJ", marketLabel: "北京" };
+    return { secid: 0, prefix: "BJ", marketLabel: "北京", kind: "stock" };
   }
   return null;
 }
 
+export function detectAShareMarket(code: string): DomesticSecurityMeta | null {
+  return detectDomesticSecurity(code);
+}
+
+export function isExchangeETFCode(code: string): boolean {
+  return detectDomesticSecurity(code)?.kind === "etf";
+}
+
 /** 兼容旧 secid 计算（push2 secid 格式 = market.code） */
-function buildSecid(
-  code: string,
-): { secid: number; prefix: AShareMarket; marketLabel: string } | null {
-  return detectAShareMarket(code);
+function buildSecid(code: string): DomesticSecurityMeta | null {
+  return detectDomesticSecurity(code);
 }
 
 // ==================== 实时价 ====================
@@ -408,7 +432,7 @@ export async function getStockKLineMap(
 }
 
 /** 解析 K 线一行："2026-07-01,10.50,10.80,10.30,10.60,123456,789012,5.71,2.91,0.85,2.13" */
-function parseKLinePoint(line: string): KLinePoint {
+export function parseKLinePoint(line: string): KLinePoint {
   const parts = line.split(",");
   return {
     date: parts[0] ?? "",
@@ -462,15 +486,31 @@ export async function getStockMinuteTrend(
 }
 
 /** 解析分时点："202607030930,10.50,10.45,123,456" */
-function parseMinutePoint(line: string): MinutePoint {
+export function parseMinutePoint(line: string): MinutePoint {
   const parts = line.split(",");
+  const price = parseNumber(parts[2], parseNumber(parts[1], 0));
+  const avgPrice = parseNumber(parts[parts.length - 1], price);
   return {
     time: parts[0] ?? "",
-    price: parseFloat(parts[1]) || 0,
-    avgPrice: parseFloat(parts[2]) || 0,
-    volume: parseFloat(parts[3]) || 0,
-    turnover: parseFloat(parts[4]) || 0,
+    price,
+    avgPrice,
+    volume: parseNumber(parts[5], 0),
+    turnover: parseNumber(parts[6], 0),
   };
+}
+
+export function formatMinuteTimeLabel(time: string): string {
+  const trimmed = time.trim();
+  const match = trimmed.match(/(\d{1,2}):(\d{2})$/);
+  if (match) return `${match[1].padStart(2, "0")}:${match[2]}`;
+  if (/^\d{12}$/.test(trimmed)) return `${trimmed.slice(8, 10)}:${trimmed.slice(10, 12)}`;
+  if (/^\d{8}\d{4}$/.test(trimmed)) return `${trimmed.slice(8, 10)}:${trimmed.slice(10, 12)}`;
+  return trimmed;
+}
+
+function parseNumber(value: string | undefined, fallback: number): number {
+  const n = parseFloat(value ?? "");
+  return Number.isFinite(n) ? n : fallback;
 }
 
 // ==================== 公司概况 ====================

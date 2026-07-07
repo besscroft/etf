@@ -5,6 +5,7 @@ export default [
   route("api/market-data", "routes/api.market-data.ts"),
   route("a-shares", "routes/a-shares.tsx"),
   route("etf", "routes/etf.tsx"),
+  route("etf/:code", "routes/etf.$code.tsx"),
   route("fund/:code", "routes/fund.$code.tsx"),
   route("stock/:code", "routes/stock.$code.tsx"),
   route("cn/funds", "routes/compare.tsx"),

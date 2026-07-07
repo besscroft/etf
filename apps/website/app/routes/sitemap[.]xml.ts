@@ -47,7 +47,6 @@ export async function loader(_args: Route.LoaderArgs) {
     { loc: absUrl("/a-shares"), changefreq: "daily", priority: 0.9 },
     { loc: absUrl("/etf"), changefreq: "daily", priority: 0.9 },
     { loc: absUrl("/cn/funds"), changefreq: "daily", priority: 0.9 },
-    { loc: absUrl("/cn/fund"), changefreq: "daily", priority: 0.8 },
     { loc: absUrl("/otc-funds"), changefreq: "daily", priority: 0.9 },
     { loc: absUrl("/otc-fund"), changefreq: "daily", priority: 0.8 },
   ];
@@ -56,7 +55,7 @@ export async function loader(_args: Route.LoaderArgs) {
   const otcFunds = await getPublicOTCFundData().catch(() => []);
 
   const fundEntries: SitemapEntry[] = otcFunds.map<SitemapEntry>((f) => ({
-    loc: absUrl(`/fund/${f.code}`),
+    loc: absUrl(`/otc-fund?code=${f.code}`),
     changefreq: "daily",
     priority: 0.7,
   }));

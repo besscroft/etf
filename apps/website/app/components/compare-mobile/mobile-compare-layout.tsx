@@ -64,7 +64,7 @@ export function MobileCompareLayout({
   onRemove,
   onPin,
   onAddCustomFund,
-  detailHref = (code) => `/fund/${code}`,
+  detailHref = (code) => `/otc-fund?code=${code}`,
   title = "基金对比",
   category,
   onCategoryChange,

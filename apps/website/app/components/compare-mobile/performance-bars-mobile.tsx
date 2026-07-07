@@ -9,7 +9,7 @@ interface PerformanceBarsMobileProps {
 
 export function PerformanceBarsMobile({
   funds,
-  detailHref = (code) => `/fund/${code}`,
+  detailHref = (code) => `/otc-fund?code=${code}`,
 }: PerformanceBarsMobileProps) {
   return (
     <div className="rounded-lg border bg-card p-3">

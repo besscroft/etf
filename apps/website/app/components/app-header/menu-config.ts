@@ -40,6 +40,5 @@ export const mainMenu: MenuItem[] = [
     label: "基金对比",
     href: "/cn/funds",
     icon: BarChart3,
-    matchPaths: ["/cn/fund"],
   },
 ];

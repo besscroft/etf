@@ -22,6 +22,7 @@ import {
   type DomesticHomeData,
   type DomesticQuoteItem,
 } from "~/lib/domestic-market";
+import { domesticSecurityDetailPath, otcFundDetailPath } from "~/lib/detail-links";
 import type { OTCClassifiedFundData } from "~/lib/market-data";
 
 export function meta(_args: Route.MetaArgs) {
@@ -82,7 +83,11 @@ function Hero({ data }: { data: DomesticHomeData }) {
 
   const goTo = (target: "stock" | "fund") => {
     if (!/^\d{6}$/.test(normalizedCode)) return;
-    void navigate(target === "stock" ? `/stock/${normalizedCode}` : `/fund/${normalizedCode}`);
+    if (target === "fund") {
+      void navigate(otcFundDetailPath(normalizedCode));
+      return;
+    }
+    void navigate(domesticSecurityDetailPath(normalizedCode));
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -163,7 +168,7 @@ function MarketStrip({ quotes }: { quotes: DomesticQuoteItem[] }) {
         {quotes.map((quote) => (
           <Link
             key={`${quote.kind}-${quote.code}`}
-            to={`/stock/${quote.code}`}
+            to={quoteDetailHref(quote)}
             className="min-w-[11rem] rounded-md border bg-background/60 px-3 py-2 transition-colors hover:border-primary/70"
           >
             <div className="flex items-center justify-between gap-2">
@@ -207,7 +212,7 @@ function ETFSection({ quotes }: { quotes: DomesticQuoteItem[] }) {
           {quotes.slice(0, 6).map((quote) => (
             <Link
               key={quote.code}
-              to={`/stock/${quote.code}`}
+              to={`/etf/${quote.code}`}
               className="rounded-md border bg-background/60 p-3 transition-colors hover:border-primary/70"
             >
               <div className="flex items-start justify-between gap-2">
@@ -255,7 +260,7 @@ function OTCFundSection({
           {funds.map((fund) => (
             <Link
               key={`${fund.category}-${fund.code}`}
-              to={`/fund/${fund.code}`}
+              to={otcFundDetailPath(fund.code)}
               className="grid gap-3 rounded-md border bg-background/60 p-3 transition-colors hover:border-primary/70 sm:grid-cols-[1fr_auto]"
             >
               <div className="min-w-0">
@@ -382,7 +387,7 @@ function SectionHead({
 function QuoteRow({ quote, dense = false }: { quote: DomesticQuoteItem; dense?: boolean }) {
   return (
     <Link
-      to={`/stock/${quote.code}`}
+      to={quoteDetailHref(quote)}
       className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-md border bg-background/60 px-3 py-2.5 transition-colors hover:border-primary/70"
     >
       <div className="min-w-0">
@@ -404,6 +409,10 @@ function QuoteRow({ quote, dense = false }: { quote: DomesticQuoteItem; dense?: 
       </div>
     </Link>
   );
+}
+
+function quoteDetailHref(quote: DomesticQuoteItem): string {
+  return quote.kind === "etf" ? `/etf/${quote.code}` : domesticSecurityDetailPath(quote.code);
 }
 
 function Footer({ fetchedAt }: { fetchedAt: string }) {

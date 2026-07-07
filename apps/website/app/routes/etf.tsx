@@ -49,7 +49,7 @@ export default function ETFPage() {
               </p>
               <div className="mt-6 flex flex-col gap-2 sm:flex-row">
                 <Button asChild className="rounded-md">
-                  <Link to="/stock/510300">
+                  <Link to="/etf/510300">
                     沪深300ETF
                     <ArrowRight className="size-4" />
                   </Link>
@@ -105,7 +105,7 @@ function ETFSection({
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {quotes.map((quote) => (
-          <Link key={quote.code} to={`/stock/${quote.code}`} className="group">
+          <Link key={quote.code} to={`/etf/${quote.code}`} className="group">
             <Card className="h-full rounded-lg shadow-none transition-colors group-hover:border-primary/70">
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-3">
@@ -139,7 +139,7 @@ function ETFSection({
 function MiniETFCard({ quote }: { quote: DomesticQuoteItem }) {
   return (
     <Link
-      to={`/stock/${quote.code}`}
+      to={`/etf/${quote.code}`}
       className="rounded-md border bg-card px-3 py-3 transition-colors hover:border-primary/70"
     >
       <div className="flex items-center justify-between gap-2">
@@ -190,7 +190,7 @@ function QuoteTable({ quotes, fetchedAt }: { quotes: DomesticQuoteItem[]; fetche
             {quotes.map((quote) => (
               <tr key={quote.code} className="border-t transition-colors hover:bg-muted/30">
                 <td className="px-4 py-3">
-                  <Link to={`/stock/${quote.code}`} className="hover:text-primary">
+                  <Link to={`/etf/${quote.code}`} className="hover:text-primary">
                     <span className="font-medium">{quote.displayName}</span>
                     <span className="ml-2 font-mono text-xs text-muted-foreground">
                       {quote.code}

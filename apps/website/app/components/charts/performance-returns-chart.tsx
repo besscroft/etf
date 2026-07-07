@@ -28,7 +28,7 @@ interface PerformanceReturnsChartProps {
 }
 
 export function PerformanceReturnsChart({
-  detailHref = (code) => `/fund/${code}`,
+  detailHref = (code) => `/otc-fund?code=${code}`,
   funds,
   height = 300,
 }: PerformanceReturnsChartProps) {

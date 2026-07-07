@@ -20,7 +20,7 @@ import {
 
 export function meta() {
   return buildMeta({
-    title: "基金对比",
+    title: "场外基金对比",
     description: "多只场外基金对比：净值趋势、阶段收益、费率、风险指标并排展示",
     path: "/cn/funds",
   });
@@ -99,6 +99,7 @@ export default function Compare() {
         <Await resolve={Promise.all([fundList, fundDetails])}>
           {([list, details]) => (
             <MobileCompareLayout
+              title="场外基金对比"
               funds={details}
               fundList={list}
               onAdd={addFund}
@@ -113,7 +114,7 @@ export default function Compare() {
 
   return (
     <div className="min-h-screen bg-background">
-      <AppHeader currentLabel="基金对比" />
+      <AppHeader currentLabel="场外基金对比" />
       <main className="container mx-auto max-w-6xl px-3 py-6 sm:px-4">
         {/* 搜索添加基金 */}
         <section className="mb-6">
@@ -459,7 +460,7 @@ function NavTrendOverlay({ funds }: { funds: Array<FundDetailData & { error?: st
         <FundCompareChart
           funds={fundsWithData}
           defaultRange={range}
-          detailHref={(code) => `/fund/${code}`}
+          detailHref={(code) => `/otc-fund?code=${code}`}
           showRangeControls={false}
         />
       </CardContent>
@@ -479,7 +480,7 @@ function PerformanceComparison({ funds }: { funds: Array<FundDetailData & { erro
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <PerformanceReturnsChart funds={funds} detailHref={(code) => `/fund/${code}`} />
+        <PerformanceReturnsChart funds={funds} detailHref={(code) => `/otc-fund?code=${code}`} />
       </CardContent>
     </Card>
   );

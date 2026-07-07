@@ -6,7 +6,7 @@
  * 功能：
  * - 实时报价（大字号 + 涨跌色 + 闪动效果）
  * - K线（日/周/月切换 + MA5/10/20 均线）
- * - 分时走势（实时价 + 均价 + 昨收参考线）
+ * - 行情走势（分时 + 日 K / 周 K / 月 K）
  * - Tab：公司概况 / 财务指标 / 近期新闻
  * - 客户端每 15s 轮询实时价
  *
@@ -17,9 +17,9 @@
  */
 
 import type { Route } from "./+types/stock.$code";
-import { useLoaderData } from "react-router";
+import { redirect, useLoaderData } from "react-router";
 import { useEffect } from "react";
-import { AlertTriangle, BarChart3, LineChart, Clock } from "lucide-react";
+import { AlertTriangle, BarChart3, LineChart } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
@@ -35,12 +35,12 @@ import {
   getStockMinuteTrend,
   getStockNews,
   getStockQuote,
+  isExchangeETFCode,
   type StockKLineMap,
   type StockQuote,
 } from "~/lib/stock-data";
 
 import { KLineChart } from "~/components/stock/kline-chart";
-import { MinuteChart } from "~/components/stock/minute-chart";
 import { StockQuoteCard } from "~/components/stock/stock-quote-card";
 import { StockInfoTabs } from "~/components/stock/stock-info-tabs";
 import { StockPageSkeleton } from "~/components/stock/stock-page-skeleton";
@@ -65,8 +65,8 @@ export function meta({ data, params }: Route.MetaArgs) {
   // 客户端 useEffect 拿到真实名后会动态覆盖 document.title。
   // 这里给搜索引擎一个 code 占位 + JSON-LD 结构化数据（schema.org Quotation）。
   return buildMeta({
-    title: `${code} 股票详情 - 实时行情/K线/分时`,
-    description: `股票代码 ${code} 的实时行情、每日/周/月 K 线、分时走势图、公司概况、财务指标与近期新闻。`,
+    title: `${code} 股票详情 - 实时行情/K线`,
+    description: `股票代码 ${code} 的实时行情、分时、每日/周/月 K 线、公司概况、财务指标与近期新闻。`,
     path: `/stock/${code}`,
     type: "article",
     extra: [buildStockJsonLd({ code, name: code, path: `/stock/${code}` })],
@@ -75,6 +75,10 @@ export function meta({ data, params }: Route.MetaArgs) {
 
 export async function loader({ params }: Route.LoaderArgs) {
   const code = params.code;
+
+  if (/^\d{6}$/.test(code) && isExchangeETFCode(code)) {
+    throw redirect(`/etf/${code}`);
+  }
 
   // 非法代码（不是 6 位 A 股 / 5 位港股）→ 标记 unsupported，meta 走 noindex
   if (!/^\d{5,6}$/.test(code)) {
@@ -171,7 +175,7 @@ function StockWithQuoteRetry({
   useEffect(() => {
     if (typeof document === "undefined") return;
     if (!quote.name || quote.name === quote.code) return;
-    document.title = `${quote.name}（${quote.code}）股票详情 - 实时行情/K线/分时`;
+    document.title = `${quote.name}（${quote.code}）股票详情 - 实时行情/K线`;
   }, [quote.name, quote.code]);
 
   return (
@@ -179,8 +183,7 @@ function StockWithQuoteRetry({
       <Breadcrumb
         items={[
           { name: "首页", path: "/" },
-          { name: "基金", path: "/otc-funds" },
-          { name: "股票", path: "/stock" },
+          { name: "A股行情", path: "/a-shares" },
           { name: quote.name && quote.name !== quote.code ? quote.name : quote.code },
         ]}
       />
@@ -207,48 +210,40 @@ function StockWithQuoteRetry({
         <StockQuoteCard quote={quote} />
       </div>
 
-      {/* K线 */}
+      {/* 行情走势 */}
       <Card className="mb-4">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm md:text-base">
             <BarChart3 className="size-4 text-blue-500" />
-            K线走势
+            行情走势
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <AsyncSection resolve={data.kline} fallback={<KLineChartFallback />}>
-            {(k) => (
-              <KLineChart dataByPeriod={k as StockKLineMap} defaultPeriod="1d" height={320} />
-            )}
-          </AsyncSection>
-        </CardContent>
-      </Card>
-
-      {/* 分时 */}
-      <Card className="mb-4">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-            <Clock className="size-4 text-amber-500" />
-            分时走势
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <AsyncSection resolve={data.minute} fallback={<div className="h-[280px]" />}>
-            {(m) => (
-              <MinuteChart
-                data={
-                  m as Array<{
-                    time: string;
-                    price: number;
-                    avgPrice: number;
-                    volume: number;
-                    turnover: number;
-                  }>
-                }
-                prevClose={quote.prevClose}
-                height={260}
-              />
-            )}
+          <AsyncSection
+            resolve={Promise.all([data.kline, data.minute]).then((v) => v)}
+            fallback={<KLineChartFallback />}
+          >
+            {(v) => {
+              const [k, m] = v as [
+                StockKLineMap,
+                Array<{
+                  time: string;
+                  price: number;
+                  avgPrice: number;
+                  volume: number;
+                  turnover: number;
+                }>,
+              ];
+              return (
+                <KLineChart
+                  dataByPeriod={k}
+                  defaultPeriod="minute"
+                  height={320}
+                  minuteData={m}
+                  prevClose={quote.prevClose}
+                />
+              );
+            }}
           </AsyncSection>
         </CardContent>
       </Card>
@@ -278,6 +273,9 @@ function KLineChartFallback() {
     <div className="space-y-3">
       <div className="flex gap-1.5">
         <Button type="button" variant="default" size="sm" disabled>
+          分时
+        </Button>
+        <Button type="button" variant="secondary" size="sm" disabled>
           日K
         </Button>
         <Button type="button" variant="secondary" size="sm" disabled>
@@ -288,7 +286,7 @@ function KLineChartFallback() {
         </Button>
       </div>
       <div className="flex h-[320px] items-center justify-center text-xs text-muted-foreground">
-        K 线加载中...
+        行情图加载中...
       </div>
     </div>
   );

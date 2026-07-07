@@ -35,7 +35,7 @@ export type BuildMetaOptions = {
   title: string;
   /** 页面描述，控制在 80-160 字符 */
   description: string;
-  /** 当前页面的相对路径（如 "/fund/513100"），用于 canonical/og:url */
+  /** 当前页面的相对路径（如 "/otc-fund?code=513100"），用于 canonical/og:url */
   path: string;
   /** og:type，默认 "website"；基金详情等可传 "article" 或 "product" */
   type?: "website" | "article" | "product";
@@ -123,7 +123,7 @@ export function buildSiteJsonLdObject(): unknown {
         "@type": "SearchAction",
         target: {
           "@type": "EntryPoint",
-          urlTemplate: `${SITE_URL}/otc-funds?funds={search_term_string}`,
+          urlTemplate: `${SITE_URL}/otc-fund?code={search_term_string}`,
         },
         "query-input": "required name=search_term_string",
       },

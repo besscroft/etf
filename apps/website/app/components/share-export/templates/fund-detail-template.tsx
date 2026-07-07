@@ -1,7 +1,7 @@
 /**
  * 基金详情导出模板
  *
- * 适用模块：fund-detail（/fund/:code）
+ * 适用模块：fund-detail（/otc-fund?code=:code）
  *
  * 布局：
  * - 基金标题 + 代码徽章

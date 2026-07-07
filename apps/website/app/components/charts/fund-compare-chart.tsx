@@ -47,7 +47,7 @@ interface FundCompareChartProps {
 
 export function FundCompareChart({
   defaultRange = "1y",
-  detailHref = (code) => `/fund/${code}`,
+  detailHref = (code) => `/otc-fund?code=${code}`,
   funds,
   height = 300,
   initialMode = "line",

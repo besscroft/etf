@@ -2,7 +2,7 @@
  * 股票详情页骨架（2026-07-03 新增）
  *
  * 配合 defer loader + AsyncSection 使用。
- * 渲染节奏：面包屑 → 标题 → 实时价卡片 → K线 → 分时 → 信息 Tab
+ * 渲染节奏：面包屑 → 标题 → 实时价卡片 → 行情图 → 信息 Tab
  */
 
 import { Card, CardContent, CardHeader } from "~/components/ui/card";
@@ -15,9 +15,7 @@ export function StockPageSkeleton({ code }: { code: string }) {
       <div className="mb-4 flex items-center gap-1.5 text-xs text-muted-foreground">
         <span>首页</span>
         <span>/</span>
-        <span>基金</span>
-        <span>/</span>
-        <span>股票</span>
+        <span>A股行情</span>
         <span>/</span>
         <Skeleton className="h-3 w-12" />
       </div>
@@ -55,11 +53,12 @@ export function StockPageSkeleton({ code }: { code: string }) {
         </CardContent>
       </Card>
 
-      {/* K线骨架 */}
+      {/* 行情图骨架 */}
       <Card className="mb-4">
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-7 w-14" />
             <Skeleton className="h-7 w-14" />
             <Skeleton className="h-7 w-14" />
             <Skeleton className="h-7 w-14" />
@@ -67,16 +66,6 @@ export function StockPageSkeleton({ code }: { code: string }) {
         </CardHeader>
         <CardContent>
           <Skeleton className="h-[320px] w-full" />
-        </CardContent>
-      </Card>
-
-      {/* 分时骨架 */}
-      <Card className="mb-4">
-        <CardHeader>
-          <Skeleton className="h-4 w-20" />
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-[260px] w-full" />
         </CardContent>
       </Card>
 
