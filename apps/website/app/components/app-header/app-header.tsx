@@ -20,6 +20,7 @@ import { motion } from "motion/react";
 import { BarChart3 } from "lucide-react";
 import { AppLink as Link } from "~/components/ui/link";
 import { DURATION, DISTANCE, EASING } from "~/lib/motion";
+import { ThemeMenu } from "~/components/theme";
 import type { AppHeaderProps } from "./types";
 import { DesktopNav } from "./desktop-nav";
 import { MobileMenuButton, MobileMenuDropdown } from "./mobile-nav";
@@ -53,8 +54,11 @@ export function AppHeader({ currentLabel }: AppHeaderProps) {
           ) : null}
         </motion.div>
 
-        <DesktopNav />
-        <MobileMenuButton />
+        <div className="flex items-center gap-1">
+          <DesktopNav />
+          <ThemeMenu />
+          <MobileMenuButton />
+        </div>
       </div>
       <MobileMenuDropdown />
     </motion.header>

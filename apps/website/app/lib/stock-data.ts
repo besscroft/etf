@@ -20,7 +20,7 @@
  * - 4xxxxx, 8xxxxx → 0.BJ（北交所）
  * - 5xxxxx → 1.SH（沪 ETF/封闭基金，本期同沪 A 走）
  * - 5 位数字 → 不支持（港股）
- * - 字母 → 不支持（美股走 getSinaUSStock 路径）
+ * - 字母 → 不支持
  */
 
 import { cachedFetch, fetchJson } from "./market-data";
@@ -63,6 +63,9 @@ export interface KLinePoint {
 
 /** K线周期 */
 export type KLinePeriod = "1d" | "1w" | "1m";
+
+/** 多周期 K 线数据 */
+export type StockKLineMap = Record<KLinePeriod, KLinePoint[]>;
 
 /** 分时数据点 */
 export interface MinutePoint {
@@ -384,6 +387,24 @@ export async function getStockKLine(
     60 * 60 * 1000,
     opts,
   );
+}
+
+/** 一次性拉取日 / 周 / 月 K 线，供前端无闪烁切换周期 */
+export async function getStockKLineMap(
+  code: string,
+  opts: { bypassCache?: boolean } = {},
+): Promise<StockKLineMap> {
+  const [daily, weekly, monthly] = await Promise.all([
+    getStockKLine(code, "1d", opts),
+    getStockKLine(code, "1w", opts),
+    getStockKLine(code, "1m", opts),
+  ]);
+
+  return {
+    "1d": daily,
+    "1w": weekly,
+    "1m": monthly,
+  };
 }
 
 /** 解析 K 线一行："2026-07-01,10.50,10.80,10.30,10.60,123456,789012,5.71,2.91,0.85,2.13" */

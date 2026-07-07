@@ -17,6 +17,24 @@ interface UseEChartsOptions {
   theme?: string;
 }
 
+function resolveCssVar(value: string): string {
+  if (typeof document === "undefined") return value;
+  const match = value.match(/^var\((--[\w-]+)\)$/);
+  if (!match) return value;
+  const resolved = getComputedStyle(document.documentElement).getPropertyValue(match[1]).trim();
+  return resolved || value;
+}
+
+function resolveThemeColors<T>(value: T): T {
+  if (typeof value === "string") return resolveCssVar(value) as T;
+  if (typeof value !== "object" || value === null) return value;
+  if (Array.isArray(value)) return value.map((item) => resolveThemeColors(item)) as T;
+  if (value instanceof Date) return value;
+
+  const entries = Object.entries(value).map(([key, entry]) => [key, resolveThemeColors(entry)]);
+  return Object.fromEntries(entries) as T;
+}
+
 export function useECharts({
   containerRef,
   enabled,
@@ -40,7 +58,7 @@ export function useECharts({
     const chart = chartRef.current;
     if (!chart || status !== "ready") return;
 
-    chart.setOption(option, {
+    chart.setOption(resolveThemeColors(option), {
       lazyUpdate: true,
       notMerge: true,
       ...setOption,
@@ -55,6 +73,7 @@ export function useECharts({
 
     let cancelled = false;
     let resizeObserver: ResizeObserver | null = null;
+    let handleThemeChange: (() => void) | null = null;
     const handlers: Array<[ChartEventName, ChartEventHandler]> = [];
 
     setStatus("loading");
@@ -66,11 +85,21 @@ export function useECharts({
 
         const chart = echarts.init(containerRef.current, theme, { renderer: "canvas" });
         chartRef.current = chart;
-        chart.setOption(optionRef.current, {
-          lazyUpdate: true,
-          notMerge: true,
-          ...setOption,
-        });
+        const applyOption = () => {
+          chart.setOption(resolveThemeColors(optionRef.current), {
+            lazyUpdate: true,
+            notMerge: true,
+            ...setOption,
+          });
+        };
+
+        applyOption();
+
+        handleThemeChange = () => {
+          applyOption();
+          chart.resize();
+        };
+        window.addEventListener("themechange", handleThemeChange);
 
         const eventNames = Object.keys(eventsRef.current ?? {}) as ChartEventName[];
         for (const eventName of eventNames) {
@@ -98,6 +127,9 @@ export function useECharts({
     return () => {
       cancelled = true;
       resizeObserver?.disconnect();
+      if (handleThemeChange) {
+        window.removeEventListener("themechange", handleThemeChange);
+      }
       const chart = chartRef.current;
       if (chart) {
         for (const [eventName, handler] of handlers) {

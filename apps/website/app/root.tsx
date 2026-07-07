@@ -11,6 +11,7 @@ import { Toaster } from "sonner";
 import type { Route } from "./+types/root";
 import "./app.css";
 import { MenuProvider, mainMenu } from "~/components/app-header";
+import { ThemeProvider } from "~/components/theme";
 import { buildSiteJsonLdObject, SITE_URL, THEME_COLOR } from "~/lib/seo";
 import { GA_MEASUREMENT_ID, isGAEnabled } from "~/lib/ga";
 
@@ -28,7 +29,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const siteJsonLd = buildSiteJsonLdObject();
 
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -40,8 +41,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
             __html: `(() => {
 try {
   const stored = localStorage.getItem("theme");
+  const mode = stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  document.documentElement.classList.toggle("dark", stored ? stored === "dark" : prefersDark);
+  const resolved = mode === "system" ? (prefersDark ? "dark" : "light") : mode;
+  document.documentElement.dataset.theme = mode;
+  document.documentElement.classList.toggle("dark", resolved === "dark");
+  document.documentElement.style.colorScheme = resolved;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", resolved === "dark" ? "#0a0a0a" : "#f7f6f2");
 } catch {}
 })();`,
           }}
@@ -74,7 +80,9 @@ gtag('config', '${GA_MEASUREMENT_ID}');`,
         )}
       </head>
       <body>
-        <MenuProvider config={mainMenu}>{children}</MenuProvider>
+        <ThemeProvider>
+          <MenuProvider config={mainMenu}>{children}</MenuProvider>
+        </ThemeProvider>
         {/* 全局 Sonner Toaster：所有 toast.error / toast.success / toast() 都在这里渲染。
             position=top-center 是中文站常见选择（顶部更醒目）；richColors 让 success/error/warning 自动着色。 */}
         <Toaster

@@ -14,6 +14,7 @@ export async function loadECharts() {
       echarts.use([
         charts.LineChart,
         charts.BarChart,
+        charts.CandlestickChart,
         charts.PieChart,
         components.AriaComponent,
         components.DatasetComponent,

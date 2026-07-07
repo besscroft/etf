@@ -6,11 +6,7 @@
  * 具备模块专属的布局、色彩与内容组织。
  *
  * 用法示例：
- * <ShareExport
- *   module="nasdaq"
- *   data={{ moduleTitle, fetchedAt, funds }}
- *   fileName="nasdaq100-funds"
- * />
+ * <ShareExport module="fund-detail" data={{ fund }} fileName="fund-detail" />
  */
 import { useCallback, useState, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -22,19 +18,12 @@ import { getModuleTheme } from "./share-export/module-theme";
 import { useCardRenderer } from "./share-export/use-card-renderer";
 import type {
   ModuleKey,
-  FundListExportData,
-  QDIIFundListExportData,
-  ValuationExportData,
   FundDetailExportData,
   FundCompareExportData,
-  StableExportData,
   AnalysisExportData,
 } from "./share-export/types";
-import { FundListTemplate } from "./share-export/templates/fund-list-template";
 import { FundDetailTemplate } from "./share-export/templates/fund-detail-template";
 import { FundCompareTemplate } from "./share-export/templates/fund-compare-template";
-import { ValuationTemplate } from "./share-export/templates/valuation-template";
-import { StableTemplate } from "./share-export/templates/stable-template";
 import { AnalysisTemplate } from "./share-export/templates/analysis-template";
 
 /** 按模块选择对应模板的入参类型 */
@@ -42,14 +31,7 @@ export interface ShareExportProps {
   /** 模块标识（决定使用哪个专用模板） */
   module: ModuleKey;
   /** 模块对应的导出数据 */
-  data:
-    | FundListExportData
-    | QDIIFundListExportData
-    | ValuationExportData
-    | FundDetailExportData
-    | FundCompareExportData
-    | StableExportData
-    | AnalysisExportData;
+  data: FundDetailExportData | FundCompareExportData | AnalysisExportData;
   /** 导出文件名（不含扩展名） */
   fileName?: string;
   /** 按钮文字 */
@@ -76,7 +58,6 @@ export function ShareExport({
 }: ShareExportProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const { isGenerating, renderToImage } = useCardRenderer();
 
   /** 根据模块构造对应的卡片 React 节点 */
@@ -85,47 +66,6 @@ export function ShareExport({
     const generatedAt = new Date().toISOString();
 
     switch (module) {
-      case "nasdaq":
-      case "sp500":
-      case "active": {
-        const d = data as FundListExportData;
-        return (
-          <FundListTemplate
-            theme={theme}
-            moduleTitle={d.moduleTitle}
-            fetchedAt={d.fetchedAt}
-            generatedAt={generatedAt}
-            funds={d.funds}
-            filterLabel={d.filterLabel}
-          />
-        );
-      }
-      case "qdii": {
-        const d = data as QDIIFundListExportData;
-        return (
-          <FundListTemplate
-            theme={theme}
-            moduleTitle={d.moduleTitle}
-            fetchedAt={d.fetchedAt}
-            generatedAt={generatedAt}
-            funds={d.funds}
-            filterLabel={d.filterLabel}
-            showCategory
-          />
-        );
-      }
-      case "valuation": {
-        const d = data as ValuationExportData;
-        return (
-          <ValuationTemplate
-            theme={theme}
-            funds={d.funds}
-            session={d.session}
-            fetchedAt={d.fetchedAt}
-            generatedAt={generatedAt}
-          />
-        );
-      }
       case "fund-detail": {
         const d = data as FundDetailExportData;
         return <FundDetailTemplate theme={theme} fund={d.fund} generatedAt={generatedAt} />;
@@ -133,10 +73,6 @@ export function ShareExport({
       case "fund-compare": {
         const d = data as FundCompareExportData;
         return <FundCompareTemplate theme={theme} funds={d.funds} generatedAt={generatedAt} />;
-      }
-      case "stable": {
-        const d = data as StableExportData;
-        return <StableTemplate theme={theme} products={d.products} generatedAt={generatedAt} />;
       }
       case "analysis": {
         const d = data as AnalysisExportData;
@@ -154,14 +90,13 @@ export function ShareExport({
   /** 生成图片 */
   const generateImage = useCallback(async () => {
     if (disabled) return;
-    setError(null);
     try {
       const node = buildCard();
       const dataUrl = await renderToImage(node);
       setImageUrl(dataUrl);
       setIsOpen(true);
     } catch {
-      setError("图片生成失败，请重试");
+      toast.error("图片生成失败，请重试");
     }
   }, [buildCard, renderToImage, disabled]);
 

@@ -21,10 +21,10 @@ import {
   makeTooltip,
   upColor,
 } from "~/components/charts/chart-utils";
-import type { KLinePeriod, KLinePoint } from "~/lib/stock-data";
+import type { KLinePeriod, KLinePoint, StockKLineMap } from "~/lib/stock-data";
 
 interface KLineChartProps {
-  data: KLinePoint[];
+  dataByPeriod: StockKLineMap;
   defaultPeriod?: KLinePeriod;
   height?: number;
 }
@@ -35,13 +35,15 @@ const PERIODS: Array<{ key: KLinePeriod; label: string }> = [
   { key: "1m", label: "月K" },
 ];
 
-export function KLineChart({ data, defaultPeriod = "1d", height = 360 }: KLineChartProps) {
+export function KLineChart({ dataByPeriod, defaultPeriod = "1d", height = 360 }: KLineChartProps) {
   const isMobile = useIsMobile();
   const [period, setPeriod] = React.useState<KLinePeriod>(defaultPeriod);
 
   React.useEffect(() => {
     setPeriod(defaultPeriod);
   }, [defaultPeriod]);
+
+  const data = dataByPeriod[period] ?? [];
 
   // 清洗 + 计算 MA
   const cleaned = React.useMemo(

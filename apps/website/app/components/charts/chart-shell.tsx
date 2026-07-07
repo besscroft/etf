@@ -15,50 +15,20 @@ interface ChartShellProps {
   option: EChartsOption;
 }
 
-function useInView(ref: React.RefObject<HTMLElement | null>) {
-  const [inView, setInView] = React.useState(false);
-
-  React.useEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-
-    if (!("IntersectionObserver" in window)) {
-      setInView(true);
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setInView(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "160px" },
-    );
-    observer.observe(node);
-
-    return () => observer.disconnect();
-  }, [ref]);
-
-  return inView;
-}
-
 export function ChartShell({
   className,
   empty,
   emptyMessage = "暂无可视化数据",
-  errorMessage = "图表加载失败，已切换为降级展示",
+  errorMessage = "图表渲染失败，请稍后刷新重试",
   events,
   height = 280,
   loadingMessage = "图表加载中...",
   option,
 }: ChartShellProps) {
   const containerRef = React.useRef<HTMLDivElement>(null);
-  const inView = useInView(containerRef);
   const { status } = useECharts({
     containerRef,
-    enabled: inView && !empty,
+    enabled: !empty,
     events,
     option,
   });

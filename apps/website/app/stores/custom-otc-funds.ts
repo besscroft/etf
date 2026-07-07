@@ -6,7 +6,7 @@ import type { OTCCategory } from "~/lib/market-data";
 const FUND_CODE_RE = /^\d{6}$/;
 const STORAGE_KEY = "etf.custom-otc-funds";
 const FALLBACK_CATEGORY: OTCCategory = "index";
-const VALID_CATEGORIES = new Set<OTCCategory>(["stock", "hybrid", "index", "bond", "qdii", "fof"]);
+const VALID_CATEGORIES = new Set<OTCCategory>(["stock", "hybrid", "index", "bond", "fof"]);
 
 export interface CustomOTCFund {
   code: string;
@@ -44,6 +44,7 @@ function normalizeFundName(code: string, value?: string) {
 }
 
 function normalizeCategory(value: unknown): OTCCategory {
+  if (value === "qdii") return FALLBACK_CATEGORY;
   return VALID_CATEGORIES.has(value as OTCCategory) ? (value as OTCCategory) : FALLBACK_CATEGORY;
 }
 

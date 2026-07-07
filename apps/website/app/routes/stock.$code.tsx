@@ -17,8 +17,8 @@
  */
 
 import type { Route } from "./+types/stock.$code";
-import { useLoaderData, useParams } from "react-router";
-import { useState, useEffect } from "react";
+import { useLoaderData } from "react-router";
+import { useEffect } from "react";
 import { AlertTriangle, BarChart3, LineChart, Clock } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
@@ -31,11 +31,11 @@ import {
   detectAShareMarket,
   getStockCompanyInfo,
   getStockFinancials,
-  getStockKLine,
+  getStockKLineMap,
   getStockMinuteTrend,
   getStockNews,
   getStockQuote,
-  type KLinePeriod,
+  type StockKLineMap,
   type StockQuote,
 } from "~/lib/stock-data";
 
@@ -45,6 +45,8 @@ import { StockQuoteCard } from "~/components/stock/stock-quote-card";
 import { StockInfoTabs } from "~/components/stock/stock-info-tabs";
 import { StockPageSkeleton } from "~/components/stock/stock-page-skeleton";
 import { useStockPoll } from "~/components/stock/use-stock-poll";
+
+const EMPTY_KLINE_MAP: StockKLineMap = { "1d": [], "1w": [], "1m": [] };
 
 export function meta({ data, params }: Route.MetaArgs) {
   const code = params.code;
@@ -81,7 +83,7 @@ export async function loader({ params }: Route.LoaderArgs) {
       status: "unsupported" as const,
       name: null,
       quote: Promise.resolve(null),
-      kline: Promise.resolve([]),
+      kline: Promise.resolve(EMPTY_KLINE_MAP),
       minute: Promise.resolve([]),
       companyInfo: Promise.resolve(null),
       financials: Promise.resolve(null),
@@ -97,7 +99,7 @@ export async function loader({ params }: Route.LoaderArgs) {
       status: "hk" as const,
       name: null,
       quote: Promise.resolve(null),
-      kline: Promise.resolve([]),
+      kline: Promise.resolve(EMPTY_KLINE_MAP),
       minute: Promise.resolve([]),
       companyInfo: Promise.resolve(null),
       financials: Promise.resolve(null),
@@ -111,7 +113,7 @@ export async function loader({ params }: Route.LoaderArgs) {
     status: "ok" as const,
     name: null, // 客户端拿到 quote 后回填
     quote: getStockQuote(code),
-    kline: getStockKLine(code, "1d"),
+    kline: getStockKLineMap(code),
     minute: getStockMinuteTrend(code),
     companyInfo: getStockCompanyInfo(code),
     financials: getStockFinancials(code),
@@ -172,10 +174,6 @@ function StockWithQuoteRetry({
     document.title = `${quote.name}（${quote.code}）股票详情 - 实时行情/K线/分时`;
   }, [quote.name, quote.code]);
 
-  const [period, setPeriod] = useState<KLinePeriod>("1d");
-  // K线数据按 period 切换：当前实现简化为初始只拉 1d，提供切换 UI 但需要重新拉接口
-  // 暂时只显示初始 1d 数据 + 切换按钮占位（后续优化：在路由层加 ?period=1w 参数）
-
   return (
     <>
       <Breadcrumb
@@ -220,24 +218,7 @@ function StockWithQuoteRetry({
         <CardContent>
           <AsyncSection resolve={data.kline} fallback={<KLineChartFallback />}>
             {(k) => (
-              <KLineChart
-                data={
-                  k as Array<{
-                    date: string;
-                    open: number;
-                    close: number;
-                    high: number;
-                    low: number;
-                    volume: number;
-                    turnover: number;
-                    amplitude: number;
-                    changePercent: number;
-                    changeAmount: number;
-                  }>
-                }
-                defaultPeriod={period}
-                height={320}
-              />
+              <KLineChart dataByPeriod={k as StockKLineMap} defaultPeriod="1d" height={320} />
             )}
           </AsyncSection>
         </CardContent>
