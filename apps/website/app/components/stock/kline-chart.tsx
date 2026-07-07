@@ -17,13 +17,20 @@ import {
   neutralColor,
   upColor,
 } from "~/components/charts/chart-utils";
-import type { KLinePoint, MarketChartPeriod, MinutePoint, StockKLineMap } from "~/lib/stock-data";
+import type {
+  KLinePeriod,
+  KLinePoint,
+  MarketChartPeriod,
+  MinutePoint,
+  StockKLineMap,
+} from "~/lib/stock-data";
 import { formatMinuteTimeLabel } from "~/lib/stock-data";
 
 interface KLineChartProps {
   dataByPeriod: StockKLineMap;
   defaultPeriod?: MarketChartPeriod;
   height?: number;
+  maWindowsByPeriod?: Partial<Record<KLinePeriod, number[]>>;
   minuteData?: MinutePoint[];
   prevClose?: number;
 }
@@ -35,10 +42,14 @@ const PERIODS: Array<{ key: MarketChartPeriod; label: string }> = [
   { key: "1m", label: "月K" },
 ];
 
+const DEFAULT_MA_WINDOWS = [5, 10, 20];
+const MA_COLORS = ["#f59e0b", "#8b5cf6", "#14b8a6", "#0ea5e9", "#ec4899", "#64748b"];
+
 export function KLineChart({
   dataByPeriod,
   defaultPeriod = "minute",
   height = 360,
+  maWindowsByPeriod,
   minuteData = [],
   prevClose = 0,
 }: KLineChartProps) {
@@ -50,6 +61,10 @@ export function KLineChart({
   }, [defaultPeriod]);
 
   const klineData = period === "minute" ? [] : (dataByPeriod[period] ?? []);
+  const maWindows = React.useMemo(() => {
+    if (period === "minute") return DEFAULT_MA_WINDOWS;
+    return normalizeMAWindows(maWindowsByPeriod?.[period] ?? DEFAULT_MA_WINDOWS);
+  }, [maWindowsByPeriod, period]);
   const cleanedKLine = React.useMemo(
     () => klineData.filter((d) => isFiniteNumber(d.close) && d.close > 0),
     [klineData],
@@ -57,11 +72,11 @@ export function KLineChart({
   const withMA = React.useMemo(() => {
     return cleanedKLine.map((d, i, arr) => ({
       ...d,
-      ma5: average(arr, i, 5),
-      ma10: average(arr, i, 10),
-      ma20: average(arr, i, 20),
+      ma: Object.fromEntries(
+        maWindows.map((window) => [window, average(arr, i, window)]),
+      ) as Record<number, number | null>,
     }));
-  }, [cleanedKLine]);
+  }, [cleanedKLine, maWindows]);
 
   const cleanedMinute = React.useMemo(
     () => minuteData.filter((d) => isFiniteNumber(d.price) && d.price > 0),
@@ -75,8 +90,8 @@ export function KLineChart({
     if (period === "minute") {
       return makeMinuteOption(cleanedMinute, prevClose, isMobile);
     }
-    return makeKLineOption(withMA, isMobile);
-  }, [cleanedMinute, isMobile, period, prevClose, withMA]);
+    return makeKLineOption(withMA, maWindows, isMobile);
+  }, [cleanedMinute, isMobile, maWindows, period, prevClose, withMA]);
 
   return (
     <div className="space-y-3">
@@ -186,14 +201,13 @@ function makeMinuteOption(
 }
 
 function makeKLineOption(
-  data: Array<KLinePoint & { ma5: number | null; ma10: number | null; ma20: number | null }>,
+  data: Array<KLinePoint & { ma: Record<number, number | null> }>,
+  maWindows: number[],
   isMobile: boolean,
 ): EChartsOption {
   const dates = data.map((d) => d.date);
   const candles = data.map((d) => [d.open, d.close, d.low, d.high]);
-  const ma5Data = data.map((d) => d.ma5);
-  const ma10Data = data.map((d) => d.ma10);
-  const ma20Data = data.map((d) => d.ma20);
+  const maNames = maWindows.map((window) => formatMAName(window));
 
   return {
     animation: data.length <= 200,
@@ -202,8 +216,9 @@ function makeKLineOption(
     grid: { bottom: isMobile ? 50 : 60, containLabel: true, left: 4, right: 8, top: 12 },
     legend: {
       bottom: isMobile ? 26 : 0,
-      data: ["MA5", "MA10", "MA20"],
+      data: maNames,
       textStyle: makeBaseTextStyle(),
+      type: maNames.length > 4 ? "scroll" : "plain",
     },
     textStyle: makeBaseTextStyle(),
     tooltip: {
@@ -215,18 +230,18 @@ function makeKLineOption(
         ) as { data?: (string | number)[]; name?: string } | undefined;
         if (!candle?.data) return "";
         const [open, close, low, high] = candle.data as [number, number, number, number];
-        const ma5Val = arr.find((p) => (p as { seriesName?: string }).seriesName === "MA5");
-        const ma10Val = arr.find((p) => (p as { seriesName?: string }).seriesName === "MA10");
-        const ma20Val = arr.find((p) => (p as { seriesName?: string }).seriesName === "MA20");
+        const maRows = maWindows.map((window) => {
+          const name = formatMAName(window);
+          const row = arr.find((p) => (p as { seriesName?: string }).seriesName === name);
+          return `<div>${name}：${formatPrice((row as { value?: number })?.value)}</div>`;
+        });
         return [
           `<div style="font-weight:600;margin-bottom:4px">${candle.name ?? ""}</div>`,
           `<div>开盘：${formatPrice(open)}</div>`,
           `<div>收盘：${formatPrice(close)}</div>`,
           `<div>最低：${formatPrice(low)}</div>`,
           `<div>最高：${formatPrice(high)}</div>`,
-          `<div style="margin-top:4px">MA5：${formatPrice((ma5Val as { value?: number })?.value)}</div>`,
-          `<div>MA10：${formatPrice((ma10Val as { value?: number })?.value)}</div>`,
-          `<div>MA20：${formatPrice((ma20Val as { value?: number })?.value)}</div>`,
+          `<div style="margin-top:4px">${maRows.join("")}</div>`,
         ].join("");
       },
     },
@@ -258,35 +273,32 @@ function makeKLineOption(
         name: "K线",
         type: "candlestick",
       },
-      {
-        data: ma5Data,
-        lineStyle: { color: "#f59e0b", width: 1 },
-        name: "MA5",
+      ...maWindows.map((window, index) => ({
+        data: data.map((d) => d.ma[window]),
+        lineStyle: { color: MA_COLORS[index % MA_COLORS.length], width: window >= 120 ? 1.25 : 1 },
+        name: formatMAName(window),
         silent: true,
         smooth: true,
         symbol: "none",
         type: "line",
-      },
-      {
-        data: ma10Data,
-        lineStyle: { color: "#8b5cf6", width: 1 },
-        name: "MA10",
-        silent: true,
-        smooth: true,
-        symbol: "none",
-        type: "line",
-      },
-      {
-        data: ma20Data,
-        lineStyle: { color: "#14b8a6", width: 1 },
-        name: "MA20",
-        silent: true,
-        smooth: true,
-        symbol: "none",
-        type: "line",
-      },
+      })),
     ],
   } as EChartsOption;
+}
+
+function normalizeMAWindows(windows: number[]): number[] {
+  const normalized = Array.from(
+    new Set(
+      windows
+        .map((window) => Math.floor(window))
+        .filter((window) => Number.isFinite(window) && window > 0),
+    ),
+  );
+  return normalized.length > 0 ? normalized : DEFAULT_MA_WINDOWS;
+}
+
+function formatMAName(window: number): string {
+  return `MA${window}`;
 }
 
 function average(arr: KLinePoint[], end: number, window: number): number | null {

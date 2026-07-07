@@ -3,6 +3,7 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
 export default [
   index("routes/home.tsx"),
   route("api/market-data", "routes/api.market-data.ts"),
+  route("api/a-share-search", "routes/api.a-share-search.ts"),
   route("a-shares", "routes/a-shares.tsx"),
   route("etf", "routes/etf.tsx"),
   route("etf/:code", "routes/etf.$code.tsx"),

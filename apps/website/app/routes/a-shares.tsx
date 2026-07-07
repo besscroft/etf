@@ -1,219 +1,302 @@
 import type { Route } from "./+types/a-shares";
+import * as React from "react";
+import { ArrowRight, Loader2, Search, X } from "lucide-react";
 import { useLoaderData } from "react-router";
-import { Activity, ArrowRight, Search } from "lucide-react";
+
 import { AppHeader } from "~/components/app-header";
-import { AppLink as Link } from "~/components/ui/link";
 import { Badge } from "~/components/ui/badge";
-import { Card, CardContent } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
+import { AppLink as Link } from "~/components/ui/link";
 import { buildMeta } from "~/lib/seo";
 import {
-  A_SHARE_HIGHLIGHTS,
-  getDomesticQuotes,
-  type DomesticQuoteItem,
-} from "~/lib/domestic-market";
+  getAshareMarketSnapshot,
+  type AShareSearchResponse,
+  type StockSearchItem,
+} from "~/lib/stock-data";
+
+const SEARCH_LIMIT = 50;
 
 export function meta(_args: Route.MetaArgs) {
   return buildMeta({
     title: "A股行情",
-    description: "精选大 A 核心股票行情，覆盖消费、新能源、金融、半导体、资源等代表性资产。",
+    description: "搜索沪深京 A 股股票，查看实时行情、涨跌幅、成交额与股票详情。",
     path: "/a-shares",
   });
 }
 
 export async function loader() {
+  const results = await getAshareMarketSnapshot(SEARCH_LIMIT);
   return {
-    quotes: await getDomesticQuotes(A_SHARE_HIGHLIGHTS),
-    fetchedAt: new Date().toISOString(),
+    initialSearch: {
+      query: "",
+      results,
+      fetchedAt: new Date().toISOString(),
+    } satisfies AShareSearchResponse,
   };
 }
 
 export default function AShares() {
-  const { quotes, fetchedAt } = useLoaderData<typeof loader>();
+  const { initialSearch } = useLoaderData<typeof loader>();
+  const [query, setQuery] = React.useState("");
+  const [payload, setPayload] = React.useState<AShareSearchResponse>(initialSearch);
+  const [status, setStatus] = React.useState<"idle" | "loading" | "error">("idle");
+
+  React.useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setPayload(initialSearch);
+      setStatus("idle");
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setStatus("loading");
+      try {
+        const params = new URLSearchParams({ q: trimmed, limit: String(SEARCH_LIMIT) });
+        const res = await fetch(`/api/a-share-search?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`search failed: ${res.status}`);
+        const data = (await res.json()) as AShareSearchResponse;
+        setPayload(data);
+        setStatus("idle");
+      } catch (error) {
+        if ((error as { name?: string }).name === "AbortError") return;
+        setPayload({
+          query: trimmed,
+          results: [],
+          fetchedAt: new Date().toISOString(),
+          message: "A 股搜索暂时不可用，请稍后再试。",
+        });
+        setStatus("error");
+      }
+    }, 250);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [initialSearch, query]);
+
+  const trimmedQuery = query.trim();
+  const results = payload.results;
 
   return (
     <div className="min-h-screen bg-background">
       <AppHeader currentLabel="A股行情" />
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-5 lg:py-12">
-        <section className="grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
-          <div className="rounded-lg border bg-card p-5 md:p-7">
-            <Badge variant="secondary" className="mb-4 rounded-md">
-              大 A 股票观察
-            </Badge>
-            <h1 className="max-w-4xl text-3xl font-semibold tracking-tight text-balance md:text-5xl">
-              用一组高质量标的，快速读懂今天的 A 股风格。
-            </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground md:text-base">
-              精选消费、新能源、金融、半导体和资源品代表股，保留详情页入口，适合盘前盘中快速扫描。
-            </p>
-            <div className="mt-6 flex flex-col gap-2 sm:flex-row">
-              <Button asChild className="rounded-md">
-                <Link to="/stock/600519">
-                  查看股票详情
-                  <ArrowRight className="size-4" />
-                </Link>
-              </Button>
-              <Button asChild variant="outline" className="rounded-md">
-                <Link to="/etf">
-                  转到场内 ETF
-                  <Activity className="size-4" />
-                </Link>
-              </Button>
-            </div>
-          </div>
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-5 lg:py-8">
+        <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary">沪深京 A 股</Badge>
+                <span className="text-xs text-muted-foreground">
+                  {trimmedQuery ? `搜索：${trimmedQuery}` : "涨幅快照"}
+                </span>
+              </div>
+              <CardTitle className="text-xl md:text-2xl">A股全市场搜索</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="搜索代码、名称或拼音缩写"
+                  className="h-11 w-full rounded-none border bg-background pl-10 pr-20 text-sm outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/30"
+                />
+                <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+                  {status === "loading" && (
+                    <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                  )}
+                  {query && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label="清空搜索"
+                      onClick={() => setQuery("")}
+                    >
+                      <X className="size-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span>覆盖沪 A、深 A、科创板、京 A</span>
+                <span className="text-border">|</span>
+                <span>{formatFetchedAt(payload.fetchedAt)}</span>
+              </div>
+            </CardContent>
+          </Card>
 
-          <div className="rounded-lg border bg-card p-5">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <Search className="size-4 text-primary" />
-              快速入口
-            </div>
-            <div className="mt-4 grid gap-2">
-              {quotes.slice(0, 4).map((quote) => (
-                <Link
-                  key={quote.code}
-                  to={`/stock/${quote.code}`}
-                  className="group flex items-center justify-between rounded-md border bg-background/60 px-3 py-2.5 transition-colors hover:border-primary/60 hover:bg-accent/50"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">{quote.displayName}</span>
-                    <span className="font-mono text-xs text-muted-foreground">{quote.code}</span>
-                  </span>
-                  <span className={trendClass(quote.changePercent)}>
-                    {formatPercent(quote.changePercent, quote.price)}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          </div>
+          <MarketSummary results={results} fetchedAt={payload.fetchedAt} />
         </section>
 
-        <MarketSummary quotes={quotes} fetchedAt={fetchedAt} />
-        <QuoteGrid quotes={quotes} />
-        <QuoteTable quotes={quotes} />
+        <section className="mt-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-medium">{trimmedQuery ? "搜索结果" : "涨幅快照"}</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {results.length > 0 ? `显示 ${results.length} 只股票` : "暂无匹配结果"}
+              </p>
+            </div>
+            {payload.message && (
+              <p
+                className={
+                  status === "error" ? "text-xs text-destructive" : "text-xs text-muted-foreground"
+                }
+              >
+                {payload.message}
+              </p>
+            )}
+          </div>
+
+          {results.length > 0 ? (
+            <SearchResults results={results} />
+          ) : (
+            <EmptyState query={trimmedQuery} />
+          )}
+        </section>
       </main>
     </div>
   );
 }
 
-function MarketSummary({ quotes, fetchedAt }: { quotes: DomesticQuoteItem[]; fetchedAt: string }) {
-  const liveQuotes = quotes.filter((quote) => quote.price > 0);
+function MarketSummary({ results, fetchedAt }: { results: StockSearchItem[]; fetchedAt: string }) {
+  const liveQuotes = results.filter((item) => item.price > 0);
   const avgChange =
     liveQuotes.length > 0
-      ? liveQuotes.reduce((sum, quote) => sum + quote.changePercent, 0) / liveQuotes.length
+      ? liveQuotes.reduce((sum, item) => sum + item.changePercent, 0) / liveQuotes.length
       : 0;
-  const time = new Date(fetchedAt).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 
   return (
-    <section className="mt-6 grid gap-3 sm:grid-cols-3">
-      <StatCard label="覆盖标的" value={`${quotes.length} 只`} />
-      <StatCard label="实时可用" value={`${liveQuotes.length} 只`} />
-      <StatCard
-        label="样本均涨跌"
-        value={formatPercent(avgChange, liveQuotes.length)}
-        tone={avgChange}
-      />
-      <p className="sm:col-span-3 text-xs text-muted-foreground">
-        更新时间 {time}，数据来源东方财富，内容仅供参考。
-      </p>
-    </section>
+    <Card>
+      <CardContent className="grid h-full grid-cols-3 gap-3 py-5">
+        <Stat label="当前列表" value={`${results.length}`} />
+        <Stat label="实时可用" value={`${liveQuotes.length}`} />
+        <Stat label="均涨跌" value={formatPercent(avgChange, liveQuotes.length)} tone={avgChange} />
+        <p className="col-span-3 text-xs text-muted-foreground">
+          数据来源东方财富，{formatFetchedAt(fetchedAt)}
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
-function StatCard({ label, value, tone = 0 }: { label: string; value: string; tone?: number }) {
+function Stat({ label, value, tone = 0 }: { label: string; value: string; tone?: number }) {
   return (
-    <div className="rounded-lg border bg-card px-4 py-3">
+    <div>
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`mt-1 font-mono text-2xl font-semibold ${tone === 0 ? "" : trendClass(tone)}`}>
+      <p className={`mt-1 font-mono text-xl font-semibold ${tone === 0 ? "" : trendClass(tone)}`}>
         {value}
       </p>
     </div>
   );
 }
 
-function QuoteGrid({ quotes }: { quotes: DomesticQuoteItem[] }) {
+function SearchResults({ results }: { results: StockSearchItem[] }) {
   return (
-    <section className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {quotes.map((quote) => (
-        <Link key={quote.code} to={`/stock/${quote.code}`} className="group">
-          <Card className="h-full rounded-lg shadow-none transition-colors group-hover:border-primary/70">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <Badge variant="secondary" className="mb-2 rounded-md text-[10px]">
-                    {quote.theme}
-                  </Badge>
-                  <h2 className="truncate text-base font-semibold">{quote.displayName}</h2>
-                  <p className="font-mono text-xs text-muted-foreground">
-                    {quote.marketLabel} {quote.code}
-                  </p>
-                </div>
-                <span
-                  className={`font-mono text-sm font-semibold ${trendClass(quote.changePercent)}`}
-                >
-                  {formatPercent(quote.changePercent, quote.price)}
-                </span>
-              </div>
-              <div className="mt-5 grid grid-cols-3 gap-2 text-sm">
-                <Metric label="最新" value={formatPrice(quote.price)} />
-                <Metric label="今开" value={formatPrice(quote.open)} />
-                <Metric label="成交额" value={formatTurnover(quote.turnover)} />
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-      ))}
-    </section>
-  );
-}
-
-function QuoteTable({ quotes }: { quotes: DomesticQuoteItem[] }) {
-  return (
-    <section className="mt-8 hidden overflow-hidden rounded-lg border bg-card md:block">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/50 text-xs text-muted-foreground">
-          <tr>
-            <th className="px-4 py-3 text-left font-medium">标的</th>
-            <th className="px-4 py-3 text-right font-medium">最新价</th>
-            <th className="px-4 py-3 text-right font-medium">涨跌幅</th>
-            <th className="px-4 py-3 text-right font-medium">今开</th>
-            <th className="px-4 py-3 text-right font-medium">成交额</th>
-          </tr>
-        </thead>
-        <tbody>
-          {quotes.map((quote) => (
-            <tr key={quote.code} className="border-t transition-colors hover:bg-muted/30">
-              <td className="px-4 py-3">
-                <Link to={`/stock/${quote.code}`} className="hover:text-primary">
-                  <span className="font-medium">{quote.displayName}</span>
-                  <span className="ml-2 font-mono text-xs text-muted-foreground">{quote.code}</span>
-                </Link>
-              </td>
-              <td className="px-4 py-3 text-right font-mono">{formatPrice(quote.price)}</td>
-              <td className={`px-4 py-3 text-right font-mono ${trendClass(quote.changePercent)}`}>
-                {formatPercent(quote.changePercent, quote.price)}
-              </td>
-              <td className="px-4 py-3 text-right font-mono">{formatPrice(quote.open)}</td>
-              <td className="px-4 py-3 text-right font-mono">{formatTurnover(quote.turnover)}</td>
+    <>
+      <div className="hidden overflow-hidden rounded-none border bg-card md:block">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-xs text-muted-foreground">
+            <tr>
+              <th className="px-4 py-3 text-left font-medium">股票</th>
+              <th className="px-4 py-3 text-left font-medium">市场</th>
+              <th className="px-4 py-3 text-left font-medium">行业</th>
+              <th className="px-4 py-3 text-right font-medium">最新价</th>
+              <th className="px-4 py-3 text-right font-medium">涨跌幅</th>
+              <th className="px-4 py-3 text-right font-medium">成交额</th>
+              <th className="px-4 py-3 text-right font-medium">详情</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
+          </thead>
+          <tbody>
+            {results.map((item) => (
+              <tr key={item.code} className="border-t transition-colors hover:bg-muted/30">
+                <td className="px-4 py-3">
+                  <Link to={`/stock/${item.code}`} className="hover:text-primary">
+                    <span className="font-medium">{item.name}</span>
+                    <span className="ml-2 font-mono text-xs text-muted-foreground">
+                      {item.code}
+                    </span>
+                  </Link>
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">{item.marketLabel}</td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {item.industry || item.area || "—"}
+                </td>
+                <td className="px-4 py-3 text-right font-mono">{formatPrice(item.price)}</td>
+                <td className={`px-4 py-3 text-right font-mono ${trendClass(item.changePercent)}`}>
+                  {formatPercent(item.changePercent, item.price)}
+                </td>
+                <td className="px-4 py-3 text-right font-mono">{formatTurnover(item.turnover)}</td>
+                <td className="px-4 py-3 text-right">
+                  <Button
+                    asChild
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`查看 ${item.name} 详情`}
+                  >
+                    <Link to={`/stock/${item.code}`}>
+                      <ArrowRight className="size-4" />
+                    </Link>
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="grid gap-2 md:hidden">
+        {results.map((item) => (
+          <Link
+            key={item.code}
+            to={`/stock/${item.code}`}
+            className="flex items-center justify-between gap-3 rounded-none border bg-card px-3 py-3 transition-colors active:bg-muted/60"
+          >
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-medium">{item.name}</span>
+              <span className="mt-0.5 flex items-center gap-2 font-mono text-xs text-muted-foreground">
+                <span>{item.code}</span>
+                <span>{item.marketLabel}</span>
+                {item.industry && <span className="truncate font-sans">{item.industry}</span>}
+              </span>
+            </span>
+            <span className="shrink-0 text-right">
+              <span className="block font-mono text-sm">{formatPrice(item.price)}</span>
+              <span className={`block font-mono text-xs ${trendClass(item.changePercent)}`}>
+                {formatPercent(item.changePercent, item.price)}
+              </span>
+            </span>
+          </Link>
+        ))}
+      </div>
+    </>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function EmptyState({ query }: { query: string }) {
   return (
-    <div>
-      <p className="text-[11px] text-muted-foreground">{label}</p>
-      <p className="mt-1 truncate font-mono font-medium">{value}</p>
+    <div className="flex min-h-48 items-center justify-center rounded-none border bg-card text-sm text-muted-foreground">
+      {query ? "没有找到匹配的沪深京 A 股股票" : "暂无 A 股快照数据"}
     </div>
   );
+}
+
+function formatFetchedAt(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "更新时间待确认";
+  return `更新 ${date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
 }
 
 function formatPrice(value: number) {

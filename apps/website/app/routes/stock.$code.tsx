@@ -5,7 +5,7 @@
  *
  * 功能：
  * - 实时报价（大字号 + 涨跌色 + 闪动效果）
- * - K线（日/周/月切换 + MA5/10/20 均线）
+ * - K线（日/周/月切换 + 日 K MA5/10/20/60/120/250 均线）
  * - 行情走势（分时 + 日 K / 周 K / 月 K）
  * - Tab：公司概况 / 财务指标 / 近期新闻
  * - 客户端每 15s 轮询实时价
@@ -47,6 +47,7 @@ import { StockPageSkeleton } from "~/components/stock/stock-page-skeleton";
 import { useStockPoll } from "~/components/stock/use-stock-poll";
 
 const EMPTY_KLINE_MAP: StockKLineMap = { "1d": [], "1w": [], "1m": [] };
+const STOCK_MA_WINDOWS_BY_PERIOD = { "1d": [5, 10, 20, 60, 120, 250] };
 
 export function meta({ data, params }: Route.MetaArgs) {
   const code = params.code;
@@ -239,6 +240,7 @@ function StockWithQuoteRetry({
                   dataByPeriod={k}
                   defaultPeriod="minute"
                   height={320}
+                  maWindowsByPeriod={STOCK_MA_WINDOWS_BY_PERIOD}
                   minuteData={m}
                   prevClose={quote.prevClose}
                 />
