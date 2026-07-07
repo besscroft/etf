@@ -1,6 +1,6 @@
 import type { Route } from "./+types/sitemap[.]xml";
-import { SITE_URL, absUrl } from "~/lib/seo";
-import { getAllQDIIFundData, getAllOTCFundData } from "~/lib/market-data";
+import { absUrl } from "~/lib/seo";
+import { getPublicOTCFundData } from "~/lib/market-data";
 
 /**
  * 资源路由：返回 sitemap.xml
@@ -44,37 +44,22 @@ export async function loader(_args: Route.LoaderArgs) {
   // 1) 静态路由
   const staticEntries: SitemapEntry[] = [
     { loc: absUrl("/"), changefreq: "daily", priority: 1.0 },
+    { loc: absUrl("/a-shares"), changefreq: "daily", priority: 0.9 },
+    { loc: absUrl("/etf"), changefreq: "daily", priority: 0.9 },
     { loc: absUrl("/cn/funds"), changefreq: "daily", priority: 0.9 },
     { loc: absUrl("/cn/fund"), changefreq: "daily", priority: 0.8 },
     { loc: absUrl("/otc-funds"), changefreq: "daily", priority: 0.9 },
     { loc: absUrl("/otc-fund"), changefreq: "daily", priority: 0.8 },
-    { loc: absUrl("/global/stable"), changefreq: "weekly", priority: 0.7 },
-    { loc: absUrl("/qdii"), changefreq: "daily", priority: 0.9 },
-    { loc: absUrl("/qdii-valuation"), changefreq: "hourly", priority: 0.8 },
-    { loc: absUrl("/nasdaq"), changefreq: "daily", priority: 0.8 },
-    { loc: absUrl("/sp500"), changefreq: "daily", priority: 0.8 },
-    { loc: absUrl("/active"), changefreq: "daily", priority: 0.8 },
   ];
 
-  // 2) 动态 fund 详情页（并行取两个数据源，sitemap 上下文不在 SSR 请求里，所以 loaderData 用不到）
-  // 注意：getAllQDIIFundData / getAllOTCFundData 在 lib/market-data.ts 内部有内存缓存，反复调用成本可控
-  const [qdiiFunds, otcFunds] = await Promise.all([
-    getAllQDIIFundData().catch(() => []),
-    getAllOTCFundData().catch(() => []),
-  ]);
+  // 2) 动态 fund 详情页（公开场外基金池，sitemap 上下文不在 SSR 请求里，所以 loaderData 用不到）
+  const otcFunds = await getPublicOTCFundData().catch(() => []);
 
-  const fundEntries: SitemapEntry[] = [
-    ...qdiiFunds.map<SitemapEntry>((f) => ({
-      loc: absUrl(`/fund/${f.code}`),
-      changefreq: "daily",
-      priority: 0.7,
-    })),
-    ...otcFunds.map<SitemapEntry>((f) => ({
-      loc: absUrl(`/fund/${f.code}`),
-      changefreq: "daily",
-      priority: 0.6,
-    })),
-  ];
+  const fundEntries: SitemapEntry[] = otcFunds.map<SitemapEntry>((f) => ({
+    loc: absUrl(`/fund/${f.code}`),
+    changefreq: "daily",
+    priority: 0.7,
+  }));
 
   // 3) 去重（同一 code 在两个列表中可能重复出现）
   const seen = new Set<string>();

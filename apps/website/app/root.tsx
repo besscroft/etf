@@ -16,16 +16,6 @@ import { GA_MEASUREMENT_ID, isGAEnabled } from "~/lib/ga";
 
 // 全局 head 资源：图标、字体预连接、canonical 默认值
 export const links: Route.LinksFunction = () => [
-  { rel: "preconnect", href: "https://fonts.googleapis.com" },
-  {
-    rel: "preconnect",
-    href: "https://fonts.gstatic.com",
-    crossOrigin: "anonymous",
-  },
-  {
-    rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap",
-  },
   { rel: "icon", href: "/favicon.ico" },
   { rel: "apple-touch-icon", href: "/favicon.ico" },
   { rel: "canonical", href: SITE_URL },
@@ -44,6 +34,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content={THEME_COLOR} />
         <meta name="format-detection" content="telephone=no" />
+        <script
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{
+            __html: `(() => {
+try {
+  const stored = localStorage.getItem("theme");
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.classList.toggle("dark", stored ? stored === "dark" : prefersDark);
+} catch {}
+})();`,
+          }}
+        />
         <Meta />
         <Links />
         {/* 站点级 WebSite + SearchAction 结构化数据（全局只此一份） */}
@@ -102,14 +104,13 @@ export default function App() {
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
-  let message = "Oops!";
-  let details = "An unexpected error occurred.";
+  let message = "页面暂时不可用";
+  let details = "请稍后重试，或返回首页继续查看市场数据。";
   let stack: string | undefined;
 
   if (isRouteErrorResponse(error)) {
-    message = error.status === 404 ? "404" : "Error";
-    details =
-      error.status === 404 ? "The requested page could not be found." : error.statusText || details;
+    message = error.status === 404 ? "404" : "页面暂时不可用";
+    details = error.status === 404 ? "没有找到这个页面。" : error.statusText || details;
   } else if (import.meta.env.DEV && error && error instanceof Error) {
     details = error.message;
     stack = error.stack;

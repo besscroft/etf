@@ -65,7 +65,7 @@ export function MobileMenuDropdown() {
     <AnimatePresence>
       {mobileOpen && (
         <motion.nav
-          className="border-t menu-gradient-bg backdrop-blur-sm px-3 py-2 md:hidden"
+          className="border-t bg-background/95 px-3 py-2 backdrop-blur-xl md:hidden"
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: "auto", opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}

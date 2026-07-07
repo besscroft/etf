@@ -2,7 +2,7 @@
  * CategoryChips 基金分类过滤器
  *
  * 桌面/移动共用的分类 chips 组件：
- * - 全部 + 6 类基金（股票/混合/指数/债券/QDII/FOF）
+ * - 全部 + 公开基金分类（股票/混合/指数/债券/FOF）
  * - URL 同步由父组件处理
  * - compact 模式：移动端横向滚动（避免换行导致高度跳动）
  * - 默认模式：桌面端 flex-wrap
@@ -13,7 +13,11 @@
  * - 左侧可选显示"分类"标签 + Filter 图标
  */
 import { Filter } from "lucide-react";
-import { OTC_CATEGORY_LABELS, OTC_CATEGORY_ORDER, type OTCCategory } from "~/lib/market-data";
+import {
+  OTC_CATEGORY_LABELS,
+  PUBLIC_OTC_CATEGORY_ORDER,
+  type OTCCategory,
+} from "~/lib/market-data";
 
 interface CategoryChipsProps {
   active: OTCCategory | "all";
@@ -25,7 +29,7 @@ interface CategoryChipsProps {
 export function CategoryChips({ active, onChange, compact = false }: CategoryChipsProps) {
   const items: Array<{ key: OTCCategory | "all"; label: string }> = [
     { key: "all", label: "全部" },
-    ...OTC_CATEGORY_ORDER.map((c) => ({ key: c, label: OTC_CATEGORY_LABELS[c] })),
+    ...PUBLIC_OTC_CATEGORY_ORDER.map((c) => ({ key: c, label: OTC_CATEGORY_LABELS[c] })),
   ];
 
   return (

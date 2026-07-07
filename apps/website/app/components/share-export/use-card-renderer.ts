@@ -85,7 +85,7 @@ export function useCardRenderer(): UseCardRendererResult {
           rootRef.current!.render(node);
         });
 
-        // 字体加载（Noto Serif Variable 可能在首次渲染时未就绪）
+        // 字体加载，避免首次截图时系统字体尚未应用。
         if (document.fonts && document.fonts.ready) {
           await document.fonts.ready;
         }

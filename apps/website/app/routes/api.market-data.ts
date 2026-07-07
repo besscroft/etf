@@ -1,7 +1,7 @@
-import { getMarketData } from "~/lib/market-data";
+import { getDomesticHomeData } from "~/lib/domestic-market";
 import type { Route } from "./+types/api.market-data";
 
-export async function loader({}: Route.LoaderArgs) {
-  const data = await getMarketData();
+export async function loader(_args: Route.LoaderArgs) {
+  const data = await getDomesticHomeData();
   return data;
 }

@@ -1878,6 +1878,13 @@ export const OTC_CATEGORY_ORDER: OTCCategory[] = [
   "fof",
 ];
 
+/** 公开产品页展示的场外基金分类，隐藏 QDII 但保留底层兼容能力 */
+export const PUBLIC_OTC_CATEGORY_ORDER: OTCCategory[] = ["stock", "hybrid", "index", "bond", "fof"];
+
+export function isPublicOTCCategory(category: string): category is OTCCategory {
+  return (PUBLIC_OTC_CATEGORY_ORDER as readonly string[]).includes(category);
+}
+
 /** 带分类的场外基金数据 */
 export interface OTCClassifiedFundData extends OTCFundData {
   category: OTCCategory;
@@ -1998,6 +2005,12 @@ export async function getAllOTCFundData(): Promise<OTCClassifiedFundData[]> {
     }),
   );
   return grouped.flat();
+}
+
+/** 获取公开场外基金数据（股票/混合/指数/债券/FOF），不在主业务中暴露 QDII */
+export async function getPublicOTCFundData(): Promise<OTCClassifiedFundData[]> {
+  const funds = await getAllOTCFundData();
+  return funds.filter((fund) => isPublicOTCCategory(fund.category));
 }
 
 // ==================== 基金代码验证/搜索 ====================

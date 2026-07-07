@@ -20,20 +20,26 @@
  * - children?: MenuItem[]（多级菜单）— 见 types.ts 扩展点说明
  * - permission?: string（权限控制）— 见 types.ts 扩展点说明
  */
-import { Activity, BarChart3, Home, TrendingUp, Wallet } from "lucide-react";
+import { Activity, BarChart3, Home, Layers, Wallet } from "lucide-react";
 import type { MenuItem } from "./types";
 
 export const mainMenu: MenuItem[] = [
   { key: "home", label: "首页", href: "/", icon: Home },
-  { key: "nasdaq", label: "纳指被动", href: "/nasdaq", icon: TrendingUp },
-  { key: "sp500", label: "标普500", href: "/sp500", icon: Activity },
-  { key: "active", label: "美股主动", href: "/active", icon: BarChart3 },
+  { key: "stocks", label: "A股行情", href: "/a-shares", icon: Activity, matchPaths: ["/stock"] },
+  { key: "etf", label: "场内ETF", href: "/etf", icon: Layers },
   {
     key: "otc",
     label: "场外基金",
     href: "/otc-funds",
     icon: Wallet,
     // 「场外基金」入口覆盖对比/详情/旧 cn/ 路径，全部归到同一高亮项
-    matchPaths: ["/otc-funds", "/otc-fund", "/cn/funds", "/cn/fund"],
+    matchPaths: ["/otc-funds", "/otc-fund"],
+  },
+  {
+    key: "compare",
+    label: "基金对比",
+    href: "/cn/funds",
+    icon: BarChart3,
+    matchPaths: ["/cn/fund"],
   },
 ];

@@ -259,14 +259,23 @@ export async function getStockQuotesBatch(
       const secidList = validCodes.map((v) => `${v.meta.secid}.${v.code}`).join(",");
       try {
         const url =
-          `https://push2.eastmoney.com/api/qt/stock/get?secid=${secidList}` +
-          `&fields=f43,f44,f45,f46,f48,f60,f168,f169,f170,f117,f292`;
+          `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${secidList}` +
+          `&fields=f12,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18&fltt=2&invt=2`;
         const res = await fetchJson<{
-          data?: Record<string, Record<string, number | string>>;
+          data?: { diff?: Array<Record<string, number | string>> };
         }>(url, { headers: { Referer: "https://quote.eastmoney.com/" } });
-        const dataObj = res.data ?? {};
+        const rows = new Map<string, Record<string, number | string>>();
+        for (const row of res.data?.diff ?? []) {
+          const code = String(row["f12"] ?? "");
+          if (code) rows.set(code, row);
+        }
+        const num = (v: number | string | undefined): number => {
+          if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+          const n = parseFloat(String(v ?? ""));
+          return Number.isFinite(n) ? n : 0;
+        };
         for (const item of validCodes) {
-          const d = dataObj[`${item.meta.secid}.${item.code}`];
+          const d = rows.get(item.code);
           if (!d) {
             empty[item.code] = {
               name: item.code,
@@ -283,23 +292,17 @@ export async function getStockQuotesBatch(
             };
             continue;
           }
-          const div = (v: number | string | undefined): number => {
-            const n = typeof v === "string" ? parseFloat(v) : (v ?? 0);
-            return Number.isFinite(n) ? n / 100 : 0;
-          };
           empty[item.code] = {
-            name: item.code,
-            price: div(d["f43"]),
-            change: div(d["f169"]),
-            changePercent: div(d["f170"]),
-            open: div(d["f46"]),
-            high: div(d["f44"]),
-            low: div(d["f45"]),
-            prevClose: div(d["f60"]),
-            volume:
-              typeof d["f48"] === "number" ? d["f48"] : parseFloat(String(d["f48"] ?? 0)) || 0,
-            turnover:
-              typeof d["f292"] === "number" ? d["f292"] : parseFloat(String(d["f292"] ?? 0)) || 0,
+            name: String(d["f14"] || item.code),
+            price: num(d["f2"]),
+            change: num(d["f4"]),
+            changePercent: num(d["f3"]),
+            open: num(d["f17"]),
+            high: num(d["f15"]),
+            low: num(d["f16"]),
+            prevClose: num(d["f18"]),
+            volume: num(d["f5"]),
+            turnover: num(d["f6"]),
             timestamp: Date.now(),
           };
         }

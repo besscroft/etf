@@ -25,10 +25,11 @@ import {
   Filter,
 } from "lucide-react";
 import {
-  getAllOTCFundData,
+  getPublicOTCFundData,
   getFundDetailData,
   OTC_CATEGORY_LABELS,
-  OTC_CATEGORY_ORDER,
+  PUBLIC_OTC_CATEGORY_ORDER,
+  isPublicOTCCategory,
   type OTCCategory,
   type FundDetailData,
 } from "~/lib/market-data";
@@ -54,7 +55,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   // 返回未 await 的 Promise：搜索下拉 + 详情主体各自流式进入。
   return {
-    fundList: getAllOTCFundData(),
+    fundList: getPublicOTCFundData(),
     fundDetail: code ? getFundDetailData(code) : Promise.resolve(null as FundDetailData | null),
   };
 }
@@ -66,7 +67,9 @@ export default function OTCFundDetail() {
   const [searchFocused, setSearchFocused] = useState(false);
 
   // 分类过滤（URL 同步）
-  const activeCategory = (searchParams.get("category") ?? "all") as OTCCategory | "all";
+  const categoryParam = searchParams.get("category") as OTCCategory | null;
+  const activeCategory: OTCCategory | "all" =
+    categoryParam && isPublicOTCCategory(categoryParam) ? categoryParam : "all";
 
   const setCategory = (cat: OTCCategory | "all") => {
     const newParams = new URLSearchParams(searchParams);
@@ -110,7 +113,7 @@ export default function OTCFundDetail() {
             >
               全部
             </button>
-            {OTC_CATEGORY_ORDER.map((c) => (
+            {PUBLIC_OTC_CATEGORY_ORDER.map((c) => (
               <button
                 key={c}
                 type="button"
@@ -502,7 +505,7 @@ function AnalysisContent({ fund }: { fund: FundDetailData }) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-              <Calendar className="size-4 text-purple-500" />
+              <Calendar className="size-4 text-primary" />
               月度收益热力图
             </CardTitle>
             <CardDescription>
@@ -585,7 +588,7 @@ function AnalysisContent({ fund }: { fund: FundDetailData }) {
                     )}
                   </div>
                   <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                    <span>最新价：{stock.price > 0 ? `$${stock.price.toFixed(2)}` : "—"}</span>
+                    <span>最新价：{stock.price > 0 ? stock.price.toFixed(2) : "—"}</span>
                     <span
                       className={
                         stock.changePercent > 0
@@ -626,7 +629,7 @@ function AnalysisContent({ fund }: { fund: FundDetailData }) {
                         )}
                       </td>
                       <td className="py-2 text-right">
-                        {stock.price > 0 ? `$${stock.price.toFixed(2)}` : "—"}
+                        {stock.price > 0 ? stock.price.toFixed(2) : "—"}
                       </td>
                       <td className="py-2 text-right">
                         <span

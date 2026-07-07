@@ -1,19 +1,20 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/noto-serif";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme {
   --font-sans:
-    "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
-    "Segoe UI Symbol", "Noto Color Emoji";
+    "SF Pro Display", "SF Pro Text", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial,
+    ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    "SFMono-Regular", "Cascadia Code", "JetBrains Mono", "Roboto Mono", ui-monospace, monospace;
 }
 
 html,
 body {
-  @apply bg-white dark:bg-gray-950;
+  @apply bg-background text-foreground;
 
   @media (prefers-color-scheme: dark) {
     color-scheme: dark;
@@ -21,8 +22,8 @@ body {
 }
 
 @theme inline {
-  --font-heading: var(--font-serif);
-  --font-serif: "Noto Serif Variable", serif;
+  --font-heading: var(--font-sans);
+  --font-serif: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -64,72 +65,76 @@ body {
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.5 0.134 242.749);
-  --primary-foreground: oklch(0.977 0.013 236.62);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.785 0.115 274.713);
-  --chart-2: oklch(0.585 0.233 277.117);
-  --chart-3: oklch(0.511 0.262 276.966);
-  --chart-4: oklch(0.457 0.24 277.023);
-  --chart-5: oklch(0.398 0.195 277.366);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.588 0.158 241.966);
-  --sidebar-primary-foreground: oklch(0.977 0.013 236.62);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --background: #f7f6f2;
+  --foreground: #171717;
+  --card: #ffffff;
+  --card-foreground: #171717;
+  --popover: #ffffff;
+  --popover-foreground: #171717;
+  --primary: #ffb000;
+  --primary-foreground: #171717;
+  --secondary: #efede7;
+  --secondary-foreground: #222222;
+  --muted: #eceae3;
+  --muted-foreground: #6f6a60;
+  --accent: #f2e3ba;
+  --accent-foreground: #2c2414;
+  --destructive: #d14b43;
+  --border: #dfdcd3;
+  --input: #dfdcd3;
+  --ring: #ffb000;
+  --chart-1: #ffb000;
+  --chart-2: #d14b43;
+  --chart-3: #168f68;
+  --chart-4: #7a6f5a;
+  --chart-5: #333333;
+  --market-up: #d14b43;
+  --market-down: #168f68;
+  --radius: 0.5rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #171717;
+  --sidebar-primary: #ffb000;
+  --sidebar-primary-foreground: #171717;
+  --sidebar-accent: #efede7;
+  --sidebar-accent-foreground: #222222;
+  --sidebar-border: #dfdcd3;
+  --sidebar-ring: #ffb000;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.443 0.11 240.79);
-  --primary-foreground: oklch(0.977 0.013 236.62);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.785 0.115 274.713);
-  --chart-2: oklch(0.585 0.233 277.117);
-  --chart-3: oklch(0.511 0.262 276.966);
-  --chart-4: oklch(0.457 0.24 277.023);
-  --chart-5: oklch(0.398 0.195 277.366);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.685 0.169 237.323);
-  --sidebar-primary-foreground: oklch(0.293 0.066 243.157);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #0a0a0a;
+  --foreground: #e8e8e8;
+  --card: #141414;
+  --card-foreground: #e8e8e8;
+  --popover: #141414;
+  --popover-foreground: #e8e8e8;
+  --primary: #ffb000;
+  --primary-foreground: #0a0a0a;
+  --secondary: #1e1e1e;
+  --secondary-foreground: #e8e8e8;
+  --muted: #1e1e1e;
+  --muted-foreground: #9a9a9a;
+  --accent: #262626;
+  --accent-foreground: #e8e8e8;
+  --destructive: #ef5350;
+  --border: #262626;
+  --input: #3a3a3a;
+  --ring: #ffb000;
+  --chart-1: #ffb000;
+  --chart-2: #ef5350;
+  --chart-3: #26a69a;
+  --chart-4: #9a9a9a;
+  --chart-5: #5c5c5c;
+  --market-up: #ef5350;
+  --market-down: #26a69a;
+  --sidebar: #141414;
+  --sidebar-foreground: #e8e8e8;
+  --sidebar-primary: #ffb000;
+  --sidebar-primary-foreground: #0a0a0a;
+  --sidebar-accent: #1e1e1e;
+  --sidebar-accent-foreground: #e8e8e8;
+  --sidebar-border: #262626;
+  --sidebar-ring: #ffb000;
 }
 
 @layer base {
@@ -138,9 +143,11 @@ body {
   }
   body {
     @apply bg-background text-foreground;
+    font-variant-numeric: tabular-nums;
   }
   html {
-    @apply font-serif;
+    @apply font-sans;
+    scroll-behavior: smooth;
   }
 }
 
@@ -196,14 +203,4 @@ body {
   ::view-transition-new(root) {
     animation: none;
   }
-}
-
-/* ==================== 菜单渐变背景 ====================
- *
- * 顶部导航（桌面端 sticky header + 移动端下拉菜单）的渐变透明背景。
- * 黄→粉 220.55° 方向（左下→右上），透明度 0.7 让背后内容仍可见。
- * 与 `backdrop-blur-sm` 配合实现毛玻璃效果。
- */
-.menu-gradient-bg {
-  background: linear-gradient(220.55deg, rgba(255, 237, 70, 0.7) 0%, rgba(255, 126, 199, 0.7) 100%);
 }

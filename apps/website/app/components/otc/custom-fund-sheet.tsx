@@ -17,7 +17,11 @@ import { toast } from "sonner";
 import { BookmarkPlus, X, Save, Plus } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { DURATION, EASING } from "~/lib/motion";
-import { OTC_CATEGORY_LABELS, OTC_CATEGORY_ORDER, type OTCCategory } from "~/lib/market-data";
+import {
+  OTC_CATEGORY_LABELS,
+  PUBLIC_OTC_CATEGORY_ORDER,
+  type OTCCategory,
+} from "~/lib/market-data";
 import {
   isValidFundCode,
   normalizeFundCode,
@@ -211,7 +215,7 @@ export function CustomFundSheet({
                     onChange={(event) => setCategory(event.target.value as OTCCategory)}
                     className="h-10 rounded-lg border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-primary/20"
                   >
-                    {OTC_CATEGORY_ORDER.map((item) => (
+                    {PUBLIC_OTC_CATEGORY_ORDER.map((item) => (
                       <option key={item} value={item}>
                         {OTC_CATEGORY_LABELS[item]}
                       </option>

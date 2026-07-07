@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "~/com
 import { Badge } from "~/components/ui/badge";
 import { BarChart3, Search, X, Plus, Activity, LineChart, Trophy, Trash2 } from "lucide-react";
 import { buildMeta } from "~/lib/seo";
-import { getAllQDIIFundData, getFundCompareData, type FundDetailData } from "~/lib/market-data";
+import { getPublicOTCFundData, getFundCompareData, type FundDetailData } from "~/lib/market-data";
 import { ShareExport } from "~/components/share-export";
 import { useIsMobile } from "~/hooks/use-media-query";
 import { MobileCompareLayout } from "~/components/compare-mobile/mobile-compare-layout";
@@ -21,7 +21,7 @@ import {
 export function meta() {
   return buildMeta({
     title: "基金对比",
-    description: "多只ETF基金对比：净值趋势、阶段收益、费率、风险指标并排展示",
+    description: "多只场外基金对比：净值趋势、阶段收益、费率、风险指标并排展示",
     path: "/cn/funds",
   });
 }
@@ -37,7 +37,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   // 返回未 await 的 Promise —— 页面 chrome 立即渲染，
   // 搜索下拉、已选标签、对比主体各自流式进入。
   return {
-    fundList: getAllQDIIFundData(),
+    fundList: getPublicOTCFundData(),
     fundDetails:
       codes.length > 0
         ? getFundCompareData(codes)

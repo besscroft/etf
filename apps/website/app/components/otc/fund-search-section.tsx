@@ -133,7 +133,7 @@ export function FundSearchSection({
         {selectedCodes.length === 0 && (
           <p className="mt-1 text-xs text-muted-foreground">
             {activeCategory === "all"
-              ? `搜索并选择最多 ${MAX_COMPARE} 只基金进行对比（覆盖股票/混合/指数/债券/QDII/FOF）`
+              ? `搜索并选择最多 ${MAX_COMPARE} 只基金进行对比（覆盖股票/混合/指数/债券/FOF）`
               : `搜索并选择最多 ${MAX_COMPARE} 只${OTC_CATEGORY_LABELS[activeCategory]}基金进行对比`}
           </p>
         )}

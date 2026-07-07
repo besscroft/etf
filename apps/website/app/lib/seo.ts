@@ -16,8 +16,8 @@ export const SITE_URL: string =
 /** 站点名称（用于 og:site_name、品牌化 title 后缀） */
 export const SITE_NAME = "ETFVoid";
 
-/** 站点品牌主色（与 app.css 中 menu-gradient 起点色保持一致） */
-export const THEME_COLOR = "#FFED46";
+/** 站点品牌主色（与 app.css 中主强调色保持一致） */
+export const THEME_COLOR = "#FFB000";
 
 /** og/twitter 缺省图（站内自制 SVG 品牌卡；建议后续提供 1200x630 PNG 提升 Facebook/Twitter/微信兼容性） */
 const FALLBACK_OG_IMAGE = `${SITE_URL}/og-image.svg`;
@@ -106,7 +106,8 @@ export function buildSiteJsonLdObject(): unknown {
       name: SITE_NAME,
       url: SITE_URL,
       inLanguage: "zh-CN",
-      description: "覆盖纳斯达克100、标普500被动指数及主动型QDII基金，提供费率对比与申购状态追踪",
+      description:
+        "面向国内投资者的大 A 股票、场内 ETF 与场外基金观察工具，提供行情浏览、基金对比和详情分析。",
       publisher: {
         "@type": "Organization",
         name: SITE_NAME,
@@ -122,7 +123,7 @@ export function buildSiteJsonLdObject(): unknown {
         "@type": "SearchAction",
         target: {
           "@type": "EntryPoint",
-          urlTemplate: `${SITE_URL}/cn/funds?funds={search_term_string}`,
+          urlTemplate: `${SITE_URL}/otc-funds?funds={search_term_string}`,
         },
         "query-input": "required name=search_term_string",
       },

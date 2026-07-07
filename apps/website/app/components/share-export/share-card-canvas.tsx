@@ -57,10 +57,11 @@ export function ShareCardCanvas({
       // 卡片根容器：固定宽度，白底，圆角，立体阴影
       style={{
         width: `${CARD_WIDTH}px`,
-        background: "#ffffff",
-        color: "#0f172a",
-        fontFamily: '"Noto Serif Variable", "Inter", ui-sans-serif, system-ui, sans-serif',
-        borderRadius: "24px",
+        background: "#f7f6f2",
+        color: "#171717",
+        fontFamily:
+          '"SF Pro Display", "SF Pro Text", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, ui-sans-serif, system-ui, sans-serif',
+        borderRadius: "18px",
         overflow: "hidden",
         boxShadow: "0 24px 60px rgba(15, 23, 42, 0.12)",
       }}
@@ -68,8 +69,8 @@ export function ShareCardCanvas({
       {/* 顶部品牌 + 模块 Header */}
       <header
         style={{
-          background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.gradientEnd} 100%)`,
-          color: "#ffffff",
+          background: `linear-gradient(135deg, #141414 0%, ${theme.gradientEnd} 100%)`,
+          color: "#f3f3f3",
           padding: "36px 40px 32px",
           position: "relative",
         }}
@@ -93,7 +94,7 @@ export function ShareCardCanvas({
             style={{
               fontSize: "14px",
               opacity: 0.85,
-              background: "rgba(255,255,255,0.18)",
+              background: "rgba(255,176,0,0.16)",
               padding: "4px 12px",
               borderRadius: "999px",
             }}
@@ -109,7 +110,7 @@ export function ShareCardCanvas({
               width: "56px",
               height: "56px",
               borderRadius: "16px",
-              background: "rgba(255,255,255,0.18)",
+              background: "rgba(255,176,0,0.16)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -133,13 +134,13 @@ export function ShareCardCanvas({
       </header>
 
       {/* 主体内容区：浅色背景，留出 padding */}
-      <main style={{ padding: "32px 40px", background: "#f8fafc" }}>{children}</main>
+      <main style={{ padding: "32px 40px", background: "#f7f6f2" }}>{children}</main>
 
       {/* 底部 Footer */}
       <footer
         style={{
           padding: "24px 40px 28px",
-          background: "#ffffff",
+          background: "#efede7",
           borderTop: `1px solid ${withAlpha(theme.primary, 0.15)}`,
         }}
       >
@@ -151,13 +152,13 @@ export function ShareCardCanvas({
             marginBottom: "8px",
           }}
         >
-          <span style={{ fontSize: "14px", color: "#475569" }}>
+          <span style={{ fontSize: "14px", color: "#6f6a60" }}>
             生成时间 · {formatTime(generatedAt)}
           </span>
           <span
             style={{
               fontSize: "12px",
-              background: withAlpha(theme.primary, 0.08),
+              background: withAlpha(theme.primary, 0.14),
               padding: "4px 10px",
               borderRadius: "999px",
               color: theme.primary,
@@ -166,7 +167,7 @@ export function ShareCardCanvas({
             {finalSource}
           </span>
         </div>
-        <p style={{ fontSize: "12px", color: "#94a3b8", margin: 0, lineHeight: 1.5 }}>
+        <p style={{ fontSize: "12px", color: "#6f6a60", margin: 0, lineHeight: 1.5 }}>
           数据仅供参考，不构成投资建议。申购状态实时变化，请以基金公司公告为准。
         </p>
       </footer>

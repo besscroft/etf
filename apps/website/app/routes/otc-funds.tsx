@@ -4,8 +4,9 @@ import { Suspense, useMemo, useCallback } from "react";
 import { Search, BarChart3, Activity } from "lucide-react";
 import { buildMeta } from "~/lib/seo";
 import {
-  getAllOTCFundData,
+  getPublicOTCFundData,
   getFundCompareData,
+  isPublicOTCCategory,
   type FundDetailData,
   type OTCCategory,
 } from "~/lib/market-data";
@@ -35,7 +36,7 @@ export function meta() {
   return buildMeta({
     title: "场外基金对比",
     description:
-      "多只场外基金对比：覆盖股票型/混合型/指数型/债券型/QDII/FOF，净值趋势、阶段收益、费率、风险并排展示",
+      "多只场外基金对比：覆盖股票型、混合型、指数型、债券型和FOF，净值趋势、阶段收益、费率、风险并排展示",
     path: "/otc-funds",
   });
 }
@@ -50,7 +51,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   // 返回未 await 的 Promise：搜索下拉、已选标签、对比主体各自流式进入。
   return {
-    fundList: getAllOTCFundData(),
+    fundList: getPublicOTCFundData(),
     fundDetails:
       codes.length > 0
         ? getFundCompareData(codes)
@@ -66,7 +67,9 @@ export default function OTCFunds() {
   const customFunds = useCustomOTCFundsStore((state) => state.funds);
 
   // 分类过滤器（URL 同步）
-  const activeCategory = (searchParams.get("category") ?? "all") as OTCCategory | "all";
+  const categoryParam = searchParams.get("category") as OTCCategory | null;
+  const activeCategory: OTCCategory | "all" =
+    categoryParam && isPublicOTCCategory(categoryParam) ? categoryParam : "all";
 
   // 已选基金代码（来自 URL，不依赖数据）
   const selectedCodes = useMemo(
@@ -145,7 +148,7 @@ export default function OTCFunds() {
               fundList={list.map((f) => ({
                 code: f.code,
                 name: f.name,
-                categoryLabel: undefined,
+                categoryLabel: f.categoryLabel,
                 custom: false,
               }))}
               customFunds={customFunds}

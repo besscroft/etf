@@ -1,9 +1,9 @@
 import type { EChartsOption } from "echarts";
 
-export const chartPalette = ["#2563eb", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#14b8a6"];
-export const upColor = "#ef4444";
-export const downColor = "#10b981";
-export const neutralColor = "#64748b";
+export const chartPalette = ["#ffb000", "#d14b43", "#168f68", "#7a6f5a", "#333333", "#9a9a9a"];
+export const upColor = "#d14b43";
+export const downColor = "#168f68";
+export const neutralColor = "#6f6a60";
 
 export function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -45,7 +45,7 @@ export function getDataZoom(isMobile: boolean): EChartsOption["dataZoom"] {
       height: 18,
       borderColor: "transparent",
       brushSelect: false,
-      fillerColor: "rgba(37, 99, 235, 0.12)",
+      fillerColor: "rgba(255, 176, 0, 0.14)",
       handleSize: 12,
       moveHandleSize: 4,
       showDetail: false,
@@ -58,7 +58,7 @@ export function makeBaseTextStyle() {
   return {
     color: "var(--muted-foreground)",
     fontFamily:
-      "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      "'SF Pro Text', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, ui-sans-serif, system-ui, sans-serif",
     fontSize: 11,
   };
 }
@@ -70,7 +70,7 @@ export function makeTooltip() {
     borderColor: "var(--border)",
     borderWidth: 1,
     confine: true,
-    extraCssText: "box-shadow:0 12px 30px rgba(15,23,42,.12);border-radius:0;",
+    extraCssText: "box-shadow:0 12px 30px rgba(0,0,0,.12);border-radius:0;",
     textStyle: {
       color: "var(--popover-foreground)",
       fontSize: 12,

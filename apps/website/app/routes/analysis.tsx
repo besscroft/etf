@@ -23,7 +23,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { getAllQDIIFundData, getFundDetailData, type FundDetailData } from "~/lib/market-data";
+import { getPublicOTCFundData, getFundDetailData, type FundDetailData } from "~/lib/market-data";
 import { DURATION, EASING } from "~/lib/motion";
 import { ShareExport } from "~/components/share-export";
 import { AppHeader } from "~/components/app-header";
@@ -45,7 +45,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   // 返回未 await 的 Promise：搜索下拉与分析内容各自流式进入。
   return {
-    fundList: getAllQDIIFundData(),
+    fundList: getPublicOTCFundData(),
     fundDetail: code ? getFundDetailData(code) : Promise.resolve(null as FundDetailData | null),
   };
 }
@@ -432,7 +432,7 @@ function AnalysisContent({ fund }: { fund: FundDetailData }) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-              <Calendar className="size-4 text-purple-500" />
+              <Calendar className="size-4 text-primary" />
               月度收益热力图
             </CardTitle>
             <CardDescription>
@@ -516,7 +516,7 @@ function AnalysisContent({ fund }: { fund: FundDetailData }) {
                     )}
                   </div>
                   <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                    <span>最新价：{stock.price > 0 ? `$${stock.price.toFixed(2)}` : "—"}</span>
+                    <span>最新价：{stock.price > 0 ? stock.price.toFixed(2) : "—"}</span>
                     <span
                       className={
                         stock.changePercent > 0
@@ -559,7 +559,7 @@ function AnalysisContent({ fund }: { fund: FundDetailData }) {
                         )}
                       </td>
                       <td className="py-2 text-right">
-                        {stock.price > 0 ? `$${stock.price.toFixed(2)}` : "—"}
+                        {stock.price > 0 ? stock.price.toFixed(2) : "—"}
                       </td>
                       <td className="py-2 text-right">
                         <span

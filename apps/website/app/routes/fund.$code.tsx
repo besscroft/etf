@@ -112,7 +112,7 @@ function FundDetailPageSkeleton() {
       <div className="mb-4 flex items-center gap-1.5 text-xs text-muted-foreground">
         <span>首页</span>
         <span>/</span>
-        <span>QDII基金</span>
+        <span>场外基金</span>
         <span>/</span>
         <Skeleton className="h-3 w-12" />
       </div>
@@ -292,7 +292,7 @@ function FundDetailContent({
       <Breadcrumb
         items={[
           { name: "首页", path: "/" },
-          { name: "QDII基金", path: "/qdii" },
+          { name: "场外基金", path: "/otc-funds" },
           { name: basic.name },
         ]}
       />
@@ -446,7 +446,7 @@ function FundHeavyContent({ heavy, basic }: { heavy: FundHeavyData; basic: FundB
       <Card className="mb-6">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-            <Users className="size-4 text-purple-500" />
+            <Users className="size-4 text-primary" />
             持仓股票
           </CardTitle>
         </CardHeader>

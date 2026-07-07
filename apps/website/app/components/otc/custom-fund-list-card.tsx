@@ -18,7 +18,7 @@ import { Database, Plus, Trash2, BookmarkPlus, BarChart3 } from "lucide-react";
 import { Card, CardContent } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Badge } from "~/components/ui/badge";
-import { OTC_CATEGORY_LABELS, type OTCCategory } from "~/lib/market-data";
+import { OTC_CATEGORY_LABELS, isPublicOTCCategory, type OTCCategory } from "~/lib/market-data";
 import { useCustomOTCFundsHydration, useCustomOTCFundsStore } from "~/stores/custom-otc-funds";
 import { DURATION } from "~/lib/motion";
 import { MAX_COMPARE } from "~/components/compare-mobile/constants";
@@ -44,11 +44,12 @@ export function CustomFundListCard({
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const addButtonRef = useRef<HTMLButtonElement>(null);
-  const defaultCategory: OTCCategory = activeCategory === "all" ? "qdii" : activeCategory;
+  const defaultCategory: OTCCategory = activeCategory === "all" ? "index" : activeCategory;
 
   const visibleCustomFunds = useMemo(() => {
-    if (activeCategory === "all") return customFunds;
-    return customFunds.filter((fund) => fund.category === activeCategory);
+    const publicFunds = customFunds.filter((fund) => isPublicOTCCategory(fund.category));
+    if (activeCategory === "all") return publicFunds;
+    return publicFunds.filter((fund) => fund.category === activeCategory);
   }, [activeCategory, customFunds]);
 
   const selectedCodeSet = useMemo(() => new Set(selectedCodes), [selectedCodes]);

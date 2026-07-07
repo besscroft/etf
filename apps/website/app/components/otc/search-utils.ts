@@ -3,6 +3,7 @@
  */
 import {
   OTC_CATEGORY_LABELS,
+  isPublicOTCCategory,
   type OTCCategory,
   type OTCClassifiedFundData,
 } from "~/lib/market-data";
@@ -16,10 +17,14 @@ export function getVisibleSearchFunds(
 ): SearchableOTCFund[] {
   const officialVisible =
     activeCategory === "all"
-      ? officialFunds
+      ? officialFunds.filter((fund) => isPublicOTCCategory(fund.category))
       : officialFunds.filter((fund) => fund.category === activeCategory);
   const customVisible = customFunds
-    .filter((fund) => activeCategory === "all" || fund.category === activeCategory)
+    .filter(
+      (fund) =>
+        isPublicOTCCategory(fund.category) &&
+        (activeCategory === "all" || fund.category === activeCategory),
+    )
     .map(
       (fund): SearchableOTCFund => ({
         code: fund.code,
