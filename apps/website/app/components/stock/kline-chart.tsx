@@ -55,10 +55,32 @@ export function KLineChart({
 }: KLineChartProps) {
   const isMobile = useIsMobile();
   const [period, setPeriod] = React.useState<MarketChartPeriod>(defaultPeriod);
+  const swipeStartX = React.useRef<number | null>(null);
+  const [swipeHint, setSwipeHint] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setPeriod(defaultPeriod);
   }, [defaultPeriod]);
+
+  // 移动端左右滑动切换图表周期
+  const onTouchStart = (event: React.TouchEvent) => {
+    if (!isMobile || event.touches.length !== 1) return;
+    swipeStartX.current = event.touches[0].clientX;
+  };
+  const onTouchEnd = (event: React.TouchEvent) => {
+    if (swipeStartX.current === null) return;
+    const endX = event.changedTouches[0]?.clientX ?? swipeStartX.current;
+    const delta = endX - swipeStartX.current;
+    swipeStartX.current = null;
+    if (Math.abs(delta) < 48) return;
+    const idx = PERIODS.findIndex((p) => p.key === period);
+    const nextIdx = delta < 0 ? Math.min(PERIODS.length - 1, idx + 1) : Math.max(0, idx - 1);
+    if (nextIdx !== idx) {
+      setSwipeHint(PERIODS[nextIdx].label);
+      setPeriod(PERIODS[nextIdx].key);
+      window.setTimeout(() => setSwipeHint(null), 500);
+    }
+  };
 
   const klineData = period === "minute" ? [] : (dataByPeriod[period] ?? []);
   const maWindows = React.useMemo(() => {
@@ -108,7 +130,21 @@ export function KLineChart({
           </Button>
         ))}
       </div>
-      <ChartShell empty={empty} emptyMessage={emptyMessage} height={height} option={option} />
+      <div className="relative" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        <ChartShell empty={empty} emptyMessage={emptyMessage} height={height} option={option} />
+        {isMobile && swipeHint && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <span className="rounded-none border bg-popover/90 px-3 py-1 text-sm font-medium shadow-sm">
+              {swipeHint}
+            </span>
+          </div>
+        )}
+      </div>
+      {isMobile && (
+        <p className="text-center text-[11px] text-muted-foreground">
+          左右滑动可切换分时 / 日K / 周K / 月K
+        </p>
+      )}
     </div>
   );
 }

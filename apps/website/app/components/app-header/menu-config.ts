@@ -20,12 +20,14 @@
  * - children?: MenuItem[]（多级菜单）— 见 types.ts 扩展点说明
  * - permission?: string（权限控制）— 见 types.ts 扩展点说明
  */
-import { Activity, BarChart3, Home, Layers, Wallet } from "lucide-react";
+import { Activity, BarChart3, Home, Layers, Star, Wallet } from "lucide-react";
 import type { MenuItem } from "./types";
 
 export const mainMenu: MenuItem[] = [
   { key: "home", label: "首页", href: "/", icon: Home },
   { key: "stocks", label: "A股行情", href: "/a-shares", icon: Activity, matchPaths: ["/stock"] },
+  { key: "sectors", label: "板块行情", href: "/sectors", icon: Layers },
+  { key: "watchlist", label: "自选股", href: "/watchlist", icon: Star, matchPaths: ["/watchlist"] },
   { key: "etf", label: "场内ETF", href: "/etf", icon: Layers },
   {
     key: "otc",

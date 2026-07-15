@@ -29,14 +29,19 @@ import { AsyncSection } from "~/components/ui/async-section";
 import { buildMeta, buildStockJsonLd } from "~/lib/seo";
 import {
   detectAShareMarket,
+  getStockCapitalFlow,
+  getStockCapitalFlowTrend,
   getStockCompanyInfo,
   getStockFinancials,
   getStockKLineMap,
   getStockMinuteTrend,
   getStockNews,
+  getStockOrderBook,
   getStockQuote,
   isExchangeETFCode,
+  type StockCapitalFlow,
   type StockKLineMap,
+  type StockOrderBook,
   type StockQuote,
 } from "~/lib/stock-data";
 
@@ -44,7 +49,11 @@ import { KLineChart } from "~/components/stock/kline-chart";
 import { StockQuoteCard } from "~/components/stock/stock-quote-card";
 import { StockInfoTabs } from "~/components/stock/stock-info-tabs";
 import { StockPageSkeleton } from "~/components/stock/stock-page-skeleton";
+import { OrderBook } from "~/components/stock/order-book";
+import { CapitalFlowPanel } from "~/components/stock/capital-flow-panel";
+import { WatchlistButton } from "~/components/stock/watchlist-button";
 import { useStockPoll } from "~/components/stock/use-stock-poll";
+import { useStockDetailPoll } from "~/components/stock/use-stock-detail-poll";
 
 const EMPTY_KLINE_MAP: StockKLineMap = { "1d": [], "1w": [], "1m": [] };
 const STOCK_MA_WINDOWS_BY_PERIOD = { "1d": [5, 10, 20, 60, 120, 250] };
@@ -120,6 +129,9 @@ export async function loader({ params }: Route.LoaderArgs) {
     quote: getStockQuote(code),
     kline: getStockKLineMap(code),
     minute: getStockMinuteTrend(code),
+    orderBook: getStockOrderBook(code),
+    capitalFlow: getStockCapitalFlow(code),
+    capitalFlowTrend: getStockCapitalFlowTrend(code, 30),
     companyInfo: getStockCompanyInfo(code),
     financials: getStockFinancials(code),
     news: getStockNews(code, 10),
@@ -201,6 +213,7 @@ function StockWithQuoteRetry({
             <span className="rounded bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
               {quote.marketLabel}
             </span>
+            <WatchlistButton code={quote.code} name={quote.name} variant="icon" />
           </div>
           <p className="mt-1 text-xs text-muted-foreground">数据仅供参考，不构成投资建议</p>
         </div>
@@ -210,6 +223,31 @@ function StockWithQuoteRetry({
       <div className="mb-4">
         <StockQuoteCard quote={quote} />
       </div>
+
+      {/* 盘口 + 资金流向 */}
+      <AsyncSection
+        resolve={Promise.all([data.orderBook, data.capitalFlow, data.capitalFlowTrend]).then(
+          (v) => v,
+        )}
+        fallback={<MarketPanelsFallback />}
+      >
+        {(v) => {
+          const [ob, cf, trend] = v as [
+            Awaited<typeof data.orderBook>,
+            Awaited<typeof data.capitalFlow>,
+            Awaited<typeof data.capitalFlowTrend>,
+          ];
+          return (
+            <StockMarketPanels
+              code={data.code}
+              initialOrderBook={ob ?? null}
+              initialCapitalFlow={cf ?? null}
+              capitalFlowTrend={trend ?? []}
+              lastPrice={quote.price}
+            />
+          );
+        }}
+      </AsyncSection>
 
       {/* 行情走势 */}
       <Card className="mb-4">
@@ -375,3 +413,45 @@ function StockDataFailed({ code }: { code: string }) {
 // 改进点：可加一个 `peekStockName(code)` 同步读缓存，loader 调它给 meta() 准备数据
 // 注：detectAShareMarket 引入但未直接使用（路由里只做长度判断），保留以备后续扩展
 void detectAShareMarket;
+
+/**
+ * 盘口 + 资金流向面板（客户端轮询刷新）
+ */
+function StockMarketPanels({
+  code,
+  initialOrderBook,
+  initialCapitalFlow,
+  capitalFlowTrend,
+  lastPrice,
+}: {
+  code: string;
+  initialOrderBook: StockOrderBook | null;
+  initialCapitalFlow: StockCapitalFlow | null;
+  capitalFlowTrend: Awaited<ReturnType<typeof getStockCapitalFlowTrend>>;
+  lastPrice: number;
+}) {
+  const { orderBook, capitalFlow } = useStockDetailPoll(code, 10_000, {
+    orderBook: initialOrderBook,
+    capitalFlow: initialCapitalFlow,
+  });
+
+  return (
+    <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+      <OrderBook book={orderBook} lastPrice={lastPrice} />
+      <CapitalFlowPanel flow={capitalFlow} trend={capitalFlowTrend} trendDays={30} />
+    </div>
+  );
+}
+
+function MarketPanelsFallback() {
+  return (
+    <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+      <div className="flex h-[320px] items-center justify-center rounded-none border bg-card text-xs text-muted-foreground">
+        盘口加载中...
+      </div>
+      <div className="flex h-[320px] items-center justify-center rounded-none border bg-card text-xs text-muted-foreground">
+        资金流加载中...
+      </div>
+    </div>
+  );
+}

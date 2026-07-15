@@ -154,14 +154,118 @@ interface EastmoneyClistRow {
   f4?: number | string;
   f5?: number | string;
   f6?: number | string;
+  f8?: number | string;
   f12?: string;
   f14?: string;
   f15?: number | string;
   f16?: number | string;
   f17?: number | string;
   f18?: number | string;
+  f168?: number | string;
   f100?: string;
   f102?: string;
+}
+
+// ==================== 五档买卖盘 ====================
+
+/** 单档盘口 */
+export interface OrderBookLevel {
+  /** 价格（元） */
+  price: number;
+  /** 挂单量（手） */
+  volume: number;
+  /** 挂单额（元） */
+  amount: number;
+}
+
+/** 五档盘口 */
+export interface StockOrderBook {
+  code: string;
+  /** 卖五 → 卖一（下标 0 为卖五，4 为卖一） */
+  asks: OrderBookLevel[];
+  /** 买一 → 买五（下标 0 为买一，4 为买五） */
+  bids: OrderBookLevel[];
+  /** 更新时间戳（毫秒） */
+  timestamp: number;
+}
+
+// ==================== 资金流向 ====================
+
+/** 单类资金净流入 */
+export interface CapitalFlowLeg {
+  /** 净流入（元，正为流入） */
+  net: number;
+  /** 净流入占比（%） */
+  netRatio: number;
+}
+
+/** 当日资金流向 */
+export interface StockCapitalFlow {
+  code: string;
+  /** 主力（超大单 + 大单）净流入（元） */
+  mainNet: number;
+  /** 主力净流入占比（%） */
+  mainNetRatio: number;
+  /** 超大单 */
+  huge: CapitalFlowLeg;
+  /** 大单 */
+  big: CapitalFlowLeg;
+  /** 中单 */
+  medium: CapitalFlowLeg;
+  /** 小单 */
+  small: CapitalFlowLeg;
+  /** 今日收盘/最新净流入合计（元，应≈0，仅校验用） */
+  totalNet: number;
+  /** 数据日期 YYYY-MM-DD */
+  date: string;
+}
+
+/** 资金流向趋势点 */
+export interface CapitalFlowTrendPoint {
+  /** 日期 YYYY-MM-DD */
+  date: string;
+  /** 主力净流入（元） */
+  mainNet: number;
+}
+
+// ==================== 板块行情 ====================
+
+/** 板块类型 */
+export type SectorType = "industry" | "concept" | "region";
+
+/** 板块行情项 */
+export interface SectorItem {
+  /** 板块代码 */
+  code: string;
+  /** 板块名称 */
+  name: string;
+  /** 涨跌幅（%） */
+  changePercent: number;
+  /** 主力净流入（元） */
+  mainNet: number;
+  /** 领涨股代码 */
+  leaderCode: string;
+  /** 领涨股名称 */
+  leaderName: string;
+  /** 领涨股涨跌幅（%） */
+  leaderChangePercent: number;
+}
+
+// ==================== 涨跌排行 ====================
+
+/** 排行维度 */
+export type RankingKind = "gainers" | "losers" | "turnoverRate" | "amount";
+
+/** 排行榜项（基于 StockSearchItem 结构裁剪） */
+export interface RankingItem {
+  code: string;
+  name: string;
+  price: number;
+  changePercent: number;
+  change: number;
+  turnoverRate: number;
+  turnover: number;
+  marketLabel: string;
 }
 
 // ==================== 市场识别 ====================
@@ -965,3 +1069,313 @@ function stripHtml(s: string): string {
     .replace(/&amp;/g, "&")
     .trim();
 }
+
+// ==================== 五档买卖盘 ====================
+
+/**
+ * 拉取五档买卖盘（盘口）
+ * - 东方财富 push2 stock/djpx2
+ * - 默认 3s TTL（盘口变化快，但服务端聚合不需要太频繁；客户端轮询 bypassCache）
+ * - 失败返回 null
+ *
+ * djpx2 返回 data.djpx 为 10 行：[卖五, 卖四, 卖三, 卖二, 卖一, 买一, 买二, 买三, 买四, 买五]
+ * 每行 = [时间, 价格(元), 手数, 笔数?]
+ */
+export async function getStockOrderBook(
+  code: string,
+  opts: { bypassCache?: boolean } = {},
+): Promise<StockOrderBook | null> {
+  const meta = buildSecid(code);
+  if (!meta) return null;
+
+  return cachedFetch(
+    `stock-orderbook-${code}`,
+    async () => {
+      try {
+        const url =
+          `https://push2.eastmoney.com/api/qt/stock/djpx2/get?secid=${meta.secid}.${code}` +
+          `&fields1=f1,f2,f3,f4,f5&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60`;
+        const res = await fetchJson<{
+          data?: {
+            djpx?: Array<[string, number | string, number | string]>;
+            name?: string;
+          };
+        }>(url, { headers: { Referer: "https://quote.eastmoney.com/" } });
+        const rows = res.data?.djpx;
+        if (!rows || rows.length < 10) return null;
+
+        const parse = (row: Array<string | number>): OrderBookLevel => ({
+          price: numberValue(row[1]),
+          volume: numberValue(row[2]),
+          amount: numberValue(row[1]) * numberValue(row[2]) * 100,
+        });
+
+        const asks = rows.slice(0, 5).reverse().map(parse); // 卖五..卖一 → 卖一..卖五
+        const bids = rows.slice(5, 10).map(parse); // 买一..买五
+
+        return {
+          code,
+          asks,
+          bids,
+          timestamp: Date.now(),
+        };
+      } catch {
+        return null;
+      }
+    },
+    3_000,
+    opts,
+  );
+}
+
+// ==================== 资金流向 ====================
+
+/**
+ * 拉取当日资金流向（主力/超大单/大单/中单/小单 净流入）
+ * - 东方财富 push2his stock/fflow/daykline（取最新一根）
+ * - 默认 60s TTL
+ * - 失败返回 null
+ *
+ * daykline 的 klines 每行格式：
+ * 日期,主力净流入,主力净占比%,超大单净流入,超大单净占比%,大单净流入,大单净占比%,
+ * 中单净流入,中单净占比%,小单净流入,小单净占比%
+ */
+export async function getStockCapitalFlow(
+  code: string,
+  opts: { bypassCache?: boolean } = {},
+): Promise<StockCapitalFlow | null> {
+  const meta = buildSecid(code);
+  if (!meta) return null;
+
+  return cachedFetch(
+    `stock-capflow-${code}`,
+    async () => {
+      try {
+        const url =
+          `https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get?secid=${meta.secid}.${code}` +
+          `&lmt=1&klt=101&fields1=f1,f2,f3,f7&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62`;
+        const res = await fetchJson<{
+          data?: { klines?: string[] };
+        }>(url, { headers: { Referer: "https://quote.eastmoney.com/" } });
+        const line = res.data?.klines?.[0];
+        if (!line) return null;
+        const p = line.split(",");
+        const at = (i: number) => numOrNull(p[i]) ?? 0;
+
+        const huge = at(3);
+        const big = at(5);
+        const medium = at(7);
+        const small = at(9);
+        const mainNet = huge + big;
+        const total = mainNet + medium + small;
+
+        return {
+          code,
+          mainNet,
+          mainNetRatio: at(2),
+          huge: { net: huge, netRatio: at(4) },
+          big: { net: big, netRatio: at(6) },
+          medium: { net: medium, netRatio: at(8) },
+          small: { net: small, netRatio: at(10) },
+          totalNet: total,
+          date: String(p[0] ?? ""),
+        };
+      } catch {
+        return null;
+      }
+    },
+    60_000,
+    opts,
+  );
+}
+
+/**
+ * 拉取 N 日主力净流入趋势（柱状图）
+ * - 东方财富 push2his stock/fflow/daykline
+ * - 默认 5min TTL
+ */
+export async function getStockCapitalFlowTrend(
+  code: string,
+  days = 60,
+  opts: { bypassCache?: boolean } = {},
+): Promise<CapitalFlowTrendPoint[]> {
+  const meta = buildSecid(code);
+  if (!meta) return [];
+
+  const safeDays = Math.min(180, Math.max(5, Math.floor(days)));
+
+  return cachedFetch(
+    `stock-capflow-trend-${safeDays}-${code}`,
+    async () => {
+      try {
+        const url =
+          `https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get?secid=${meta.secid}.${code}` +
+          `&lmt=${safeDays}&klt=101&fields1=f1,f2,f3,f7&fields2=f51,f52`;
+        const res = await fetchJson<{
+          data?: { klines?: string[] };
+        }>(url, { headers: { Referer: "https://quote.eastmoney.com/" } });
+        const lines = res.data?.klines ?? [];
+        return lines
+          .map((line) => {
+            const p = line.split(",");
+            return { date: String(p[0] ?? ""), mainNet: numOrNull(p[1]) ?? 0 };
+          })
+          .filter((point) => point.date);
+      } catch {
+        return [];
+      }
+    },
+    5 * 60 * 1000,
+    opts,
+  );
+}
+
+// ==================== 板块行情 ====================
+
+const SECTOR_FS: Record<SectorType, string> = {
+  industry: "m:90+t:2",
+  concept: "m:90+t:3",
+  region: "m:90+t:1",
+};
+
+/**
+ * 拉取板块行情列表（行业 / 概念 / 地区）
+ * - 东方财富 push2 clist（板块专用 fs）
+ * - 默认 60s TTL
+ * - 返回按涨跌幅降序
+ */
+export async function getSectorQuotes(
+  type: SectorType = "industry",
+  limit = 50,
+  opts: { bypassCache?: boolean } = {},
+): Promise<SectorItem[]> {
+  const safeLimit = Math.min(100, Math.max(1, Math.floor(limit)));
+  const fs = SECTOR_FS[type] ?? SECTOR_FS.industry;
+
+  return cachedFetch(
+    `sector-${type}-${safeLimit}`,
+    async () => {
+      try {
+        const params = new URLSearchParams({
+          pn: "1",
+          pz: String(safeLimit),
+          po: "1",
+          np: "1",
+          ut: "bd1d9ddb04089700cf9c27f6f7426281",
+          fltt: "2",
+          invt: "2",
+          fid: "f3",
+          fs,
+          fields: "f12,f14,f3,f62,f184,f165,f175,f128,f136,f137",
+        });
+        const res = await fetchJson<{
+          data?: {
+            diff?: Array<Record<string, number | string>>;
+          };
+        }>(`https://push2.eastmoney.com/api/qt/clist/get?${params.toString()}`, {
+          headers: { Referer: "https://quote.eastmoney.com/" },
+        });
+        return (res.data?.diff ?? [])
+          .map((row): SectorItem | null => {
+            const code = String(row["f12"] ?? "");
+            const name = String(row["f14"] ?? "");
+            if (!code || !name) return null;
+            return {
+              code,
+              name,
+              changePercent: numberValue(row["f3"]),
+              mainNet: numberValue(row["f62"]),
+              leaderCode: String(row["f128"] ?? ""),
+              leaderName: String(row["f135"] ?? row["f128"] ?? ""),
+              leaderChangePercent: numberValue(row["f136"]),
+            };
+          })
+          .filter((item): item is SectorItem => item !== null)
+          .sort((a, b) => b.changePercent - a.changePercent);
+      } catch {
+        return [];
+      }
+    },
+    60_000,
+    opts,
+  );
+}
+
+// ==================== 涨跌排行 ====================
+
+const RANKING_CONFIG: Record<RankingKind, { fid: string; fs: string; label: string }> = {
+  gainers: { fid: "f3", fs: A_SHARE_CLIST_FS, label: "涨幅榜" },
+  losers: { fid: "f3", fs: A_SHARE_CLIST_FS, label: "跌幅榜" },
+  turnoverRate: { fid: "f168", fs: A_SHARE_CLIST_FS, label: "换手率榜" },
+  amount: { fid: "f6", fs: A_SHARE_CLIST_FS, label: "成交额榜" },
+};
+
+/**
+ * 拉取 A 股排行榜（涨幅 / 跌幅 / 换手率 / 成交额）
+ * - 东方财富 push2 clist
+ * - 默认 60s TTL
+ * - 失败兜底返回空数组
+ */
+export async function getAshareRankings(
+  kind: RankingKind = "gainers",
+  limit = 50,
+  opts: { bypassCache?: boolean } = {},
+): Promise<RankingItem[]> {
+  const safeLimit = Math.min(100, Math.max(1, Math.floor(limit)));
+  const config = RANKING_CONFIG[kind] ?? RANKING_CONFIG.gainers;
+  const po = kind === "losers" ? "0" : "1"; // 跌幅榜按涨跌幅升序
+
+  return cachedFetch(
+    `a-share-ranking-${kind}-${safeLimit}`,
+    async () => {
+      try {
+        const params = new URLSearchParams({
+          pn: "1",
+          pz: String(safeLimit),
+          po,
+          np: "1",
+          ut: "bd1d9ddb04089700cf9c27f6f7426281",
+          fltt: "2",
+          invt: "2",
+          fid: config.fid,
+          fs: config.fs,
+          fields: "f12,f14,f2,f3,f4,f5,f6,f8,f100,f102",
+        });
+        const res = await fetchJson<{
+          data?: { diff?: EastmoneyClistRow[] };
+        }>(`https://push2.eastmoney.com/api/qt/clist/get?${params.toString()}`, {
+          headers: { Referer: "https://quote.eastmoney.com/" },
+        });
+        return (res.data?.diff ?? [])
+          .map((row): RankingItem | null => {
+            const code = String(row.f12 ?? "");
+            const meta = detectDomesticSecurity(code);
+            if (!meta || meta.kind !== "stock") return null;
+            return {
+              code,
+              name: String(row.f14 || code),
+              price: numberValue(row.f2),
+              changePercent: numberValue(row.f3),
+              change: numberValue(row.f4),
+              turnoverRate: numberValue(row.f8),
+              turnover: numberValue(row.f6),
+              marketLabel: meta.marketLabel,
+            };
+          })
+          .filter((item): item is RankingItem => item !== null);
+      } catch {
+        return [];
+      }
+    },
+    60_000,
+    opts,
+  );
+}
+
+/** 排行维度中文标签 */
+export const RANKING_LABELS: Record<RankingKind, string> = {
+  gainers: "涨幅榜",
+  losers: "跌幅榜",
+  turnoverRate: "换手率榜",
+  amount: "成交额榜",
+};
