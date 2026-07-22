@@ -152,38 +152,56 @@ function StockWorkspace({
 
       <StockQuoteCard quote={quote} />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <section className="market-panel overflow-hidden">
-          <div className="market-panel-header">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="size-4 text-primary" />
-              <h2 className="text-sm font-semibold">行情走势</h2>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="contents lg:col-start-1 lg:flex lg:min-w-0 lg:flex-col lg:gap-4">
+          <section className="order-1 market-panel overflow-hidden">
+            <div className="market-panel-header">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="size-4 text-primary" />
+                <h2 className="text-sm font-semibold">行情走势</h2>
+              </div>
+              <span className="text-[11px] text-muted-foreground">分时 / 日周月 K 线</span>
             </div>
-            <span className="text-[11px] text-muted-foreground">分时 / 日周月 K 线</span>
-          </div>
-          <div className="p-3 sm:p-4">
+            <div className="p-3 sm:p-4">
+              <AsyncSection
+                resolve={Promise.all([data.kline, data.minute])}
+                fallback={<ChartFallback />}
+              >
+                {(value) => {
+                  const [kline, minute] = value as [StockKLineMap, Awaited<typeof data.minute>];
+                  return (
+                    <KLineChart
+                      dataByPeriod={kline}
+                      defaultPeriod="minute"
+                      height="clamp(380px, 58vh, 600px)"
+                      maWindowsByPeriod={STOCK_MA_WINDOWS_BY_PERIOD}
+                      minuteData={minute}
+                      prevClose={quote.prevClose}
+                    />
+                  );
+                }}
+              </AsyncSection>
+            </div>
+          </section>
+
+          <section className="order-3 min-w-0 lg:order-2">
             <AsyncSection
-              resolve={Promise.all([data.kline, data.minute])}
-              fallback={<ChartFallback />}
+              resolve={Promise.all([data.companyInfo, data.financials, data.news])}
+              fallback={<InfoTabsFallback />}
             >
               {(value) => {
-                const [kline, minute] = value as [StockKLineMap, Awaited<typeof data.minute>];
-                return (
-                  <KLineChart
-                    dataByPeriod={kline}
-                    defaultPeriod="minute"
-                    height="clamp(380px, 58vh, 600px)"
-                    maWindowsByPeriod={STOCK_MA_WINDOWS_BY_PERIOD}
-                    minuteData={minute}
-                    prevClose={quote.prevClose}
-                  />
-                );
+                const [info, financials, news] = value as [
+                  Awaited<typeof data.companyInfo>,
+                  Awaited<typeof data.financials>,
+                  Awaited<typeof data.news>,
+                ];
+                return <StockInfoTabs companyInfo={info} financials={financials} news={news} />;
               }}
             </AsyncSection>
-          </div>
-        </section>
+          </section>
+        </div>
 
-        <aside className="space-y-4">
+        <aside className="order-2 space-y-4 lg:col-start-2 lg:order-none lg:row-start-1">
           <div className="market-segment w-full lg:hidden">
             <button
               type="button"
@@ -224,20 +242,6 @@ function StockWorkspace({
           </AsyncSection>
         </aside>
       </div>
-
-      <AsyncSection
-        resolve={Promise.all([data.companyInfo, data.financials, data.news])}
-        fallback={<InfoTabsFallback />}
-      >
-        {(value) => {
-          const [info, financials, news] = value as [
-            Awaited<typeof data.companyInfo>,
-            Awaited<typeof data.financials>,
-            Awaited<typeof data.news>,
-          ];
-          return <StockInfoTabs companyInfo={info} financials={financials} news={news} />;
-        }}
-      </AsyncSection>
     </div>
   );
 }
