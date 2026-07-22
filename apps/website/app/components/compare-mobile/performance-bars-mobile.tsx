@@ -17,7 +17,7 @@ export function PerformanceBarsMobile({
         <Trophy className="size-4 text-amber-500" />
         阶段收益对比
       </div>
-      <PerformanceReturnsChart funds={funds} detailHref={detailHref} height={260} />
+      <PerformanceReturnsChart funds={funds} detailHref={detailHref} />
     </div>
   );
 }

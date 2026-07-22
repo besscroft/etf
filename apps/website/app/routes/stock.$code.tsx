@@ -283,7 +283,7 @@ function cnTab(active: boolean) {
 
 function ChartFallback() {
   return (
-    <div className="flex h-[420px] items-center justify-center text-xs text-muted-foreground">
+    <div className="chart-skeleton chart-skeleton-tall flex items-center justify-center text-xs text-muted-foreground">
       行情图加载中
     </div>
   );

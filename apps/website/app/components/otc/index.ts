@@ -12,6 +12,7 @@
  * - NavTrendOverlay / PerformanceComparison：桌面端净值走势 / 阶段收益
  */
 export { CategoryChips } from "./category-chips";
+export { FundCompareDock } from "./fund-compare-dock";
 export { CustomFundSheet } from "./custom-fund-sheet";
 export { CustomFundListCard } from "./custom-fund-list-card";
 export { FundSearchSection } from "./fund-search-section";

@@ -5,7 +5,7 @@ import { useNavigate } from "react-router";
 import { Button } from "~/components/ui/button";
 import type { FundDetailData } from "~/lib/market-data";
 import { useIsMobile } from "~/hooks/use-media-query";
-import { ChartShell } from "./chart-shell";
+import { ChartShell, CHART_HEIGHTS } from "./chart-shell";
 import {
   chartPalette,
   downColor,
@@ -40,7 +40,7 @@ interface FundCompareChartProps {
   defaultRange?: RangeKey;
   detailHref?: (code: string) => string;
   funds: Array<FundDetailData & { error?: string }>;
-  height?: number;
+  height?: number | string;
   initialMode?: ChartMode;
   showRangeControls?: boolean;
 }
@@ -49,7 +49,7 @@ export function FundCompareChart({
   defaultRange = "1y",
   detailHref = (code) => `/otc-fund?code=${code}`,
   funds,
-  height = 300,
+  height = CHART_HEIGHTS.standard,
   initialMode = "line",
   showRangeControls = true,
 }: FundCompareChartProps) {

@@ -2,7 +2,7 @@ import * as React from "react";
 import type { EChartsOption } from "echarts";
 
 import { Button } from "~/components/ui/button";
-import { ChartShell } from "~/components/charts/chart-shell";
+import { ChartShell, CHART_HEIGHTS } from "~/components/charts/chart-shell";
 import { useIsMobile } from "~/hooks/use-media-query";
 import {
   downColor,
@@ -42,7 +42,7 @@ const MA_COLORS = ["#f0b429", "#9d7cf5", "#31b89b", "#4d9de0", "#dd7aa8", "#7c87
 export function KLineChart({
   dataByPeriod,
   defaultPeriod = "minute",
-  height = 440,
+  height = CHART_HEIGHTS.tall,
   maWindowsByPeriod,
   minuteData = [],
   prevClose = null,
@@ -127,6 +127,7 @@ export function KLineChart({
           emptyMessage={period === "minute" ? "暂无分时数据" : "暂无 K 线数据"}
           height={height}
           option={option}
+          variant="tall"
         />
         {isMobile && swipeHint ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">

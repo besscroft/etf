@@ -10,7 +10,7 @@
 import * as React from "react";
 import type { EChartsOption } from "echarts";
 
-import { ChartShell } from "~/components/charts/chart-shell";
+import { ChartShell, CHART_HEIGHTS } from "~/components/charts/chart-shell";
 import {
   downColor,
   getDataZoom,
@@ -27,10 +27,14 @@ interface MinuteChartProps {
   data: MinutePoint[];
   /** 昨收价（用于 markLine 参考线） */
   prevClose?: number | null;
-  height?: number;
+  height?: number | string;
 }
 
-export function MinuteChart({ data, prevClose = 0, height = 280 }: MinuteChartProps) {
+export function MinuteChart({
+  data,
+  prevClose = 0,
+  height = CHART_HEIGHTS.standard,
+}: MinuteChartProps) {
   const isMobile = useIsMobile();
 
   const cleaned = React.useMemo(

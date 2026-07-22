@@ -65,7 +65,7 @@ export function StockPageSkeleton({ code }: { code: string }) {
           </div>
         </CardHeader>
         <CardContent>
-          <Skeleton className="h-[320px] w-full" />
+          <Skeleton className="chart-skeleton chart-skeleton-tall w-full" />
         </CardContent>
       </Card>
 

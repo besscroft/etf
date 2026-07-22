@@ -122,6 +122,111 @@ function extractJsArray<T>(text: string, varName: string): T[] | null {
   }
 }
 
+export interface ParsedFundHolding {
+  code: string;
+  name: string;
+  ratio: number;
+  shareCount: number | null;
+}
+
+function decodeHtmlText(value: string): string {
+  return value
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;|&#34;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCharCode(Number(code)))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeSecurityCode(value: string): string {
+  return decodeHtmlText(value).replace(/\s+/g, "").toUpperCase();
+}
+
+export function normalizeFundHoldingCode(value: string): string {
+  const code = normalizeSecurityCode(value);
+  if (/^\d{7}$/.test(code) && /[01]$/.test(code)) return code.slice(0, 6);
+  return code;
+}
+
+function isUsableSecurityName(value: string | undefined, code: string): value is string {
+  if (!value) return false;
+  const normalized = decodeHtmlText(value);
+  return Boolean(
+    normalized && normalized !== "-" && normalized.toUpperCase() !== code.toUpperCase(),
+  );
+}
+
+export function resolveHoldingDisplayName(
+  code: string,
+  ...candidates: Array<string | undefined>
+): string {
+  const name = candidates
+    .filter((candidate): candidate is string => typeof candidate === "string")
+    .map(decodeHtmlText)
+    .find((candidate) => isUsableSecurityName(candidate, code));
+  return name ?? "证券名称待披露";
+}
+
+/** Parse Eastmoney holding rows without depending on one exact quote/class layout. */
+export function parseFundHoldingRows(html: string): ParsedFundHolding[] {
+  const parsed = new Map<string, ParsedFundHolding>();
+  const rows = [...html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)];
+
+  for (const rowMatch of rows) {
+    const row = rowMatch[1];
+    const cells = [...row.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map((match) => ({
+      html: match[1],
+      text: decodeHtmlText(match[1]),
+    }));
+    if (cells.length < 2) continue;
+
+    const hrefCode = row.match(/[?&](?:code|stockcode)=([0-9A-Z.]{4,16})(?:[&"']|$)/i)?.[1];
+    const codeCellIndex = cells.findIndex((cell) => /^[0-9A-Z.]{4,16}$/i.test(cell.text));
+    const code = normalizeSecurityCode(hrefCode ?? cells[codeCellIndex]?.text ?? "");
+    if (!code || !/[0-9]/.test(code)) continue;
+
+    const ratioCellIndex = cells.findIndex((cell) => /-?\d+(?:\.\d+)?\s*%/.test(cell.text));
+    const ratioMatch =
+      ratioCellIndex >= 0 ? cells[ratioCellIndex].text.match(/(-?\d+(?:\.\d+)?)\s*%/) : null;
+    const ratio = ratioMatch ? Number.parseFloat(ratioMatch[1]) : 0;
+
+    const nameCandidates = cells
+      .slice(Math.max(0, codeCellIndex + 1), ratioCellIndex >= 0 ? ratioCellIndex : undefined)
+      .map((cell) => cell.text)
+      .filter((value) => !/^\d+$/.test(value));
+    const anchorNames = [...row.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/gi)].map((match) =>
+      decodeHtmlText(match[1]),
+    );
+    const name = resolveHoldingDisplayName(code, ...nameCandidates, ...anchorNames);
+
+    let shareCount: number | null = null;
+    if (ratioCellIndex >= 0) {
+      const shareCell = cells
+        .slice(ratioCellIndex + 1)
+        .map((cell) => cell.text)
+        .find((value) => /^-?[\d,]+(?:\.\d+)?$/.test(value));
+      if (shareCell) {
+        const parsedShareCount = Number.parseFloat(shareCell.replace(/,/g, ""));
+        shareCount = Number.isFinite(parsedShareCount) ? parsedShareCount : null;
+      }
+    }
+
+    parsed.set(code, {
+      code,
+      name,
+      ratio: Number.isFinite(ratio) ? ratio : 0,
+      shareCount,
+    });
+  }
+
+  return [...parsed.values()];
+}
+
 /** 批量获取基金对比数据（并行获取多只基金详情） */
 export async function getFundCompareData(
   codes: string[],
@@ -464,8 +569,11 @@ export async function getFundHeavyData(
         // - pingzhongdata.stockCodes 包含基金持有的所有股票代码
         // - FundArchivesDatas?type=jjcc&topline=200 拿全量持仓的占比 / 持股数 / 名称
         // - A 股实时价走 push2 批量接口；其他代码只展示披露信息，不请求海外行情
-        const stockCodes = extractJsArray<string>(pingzhongText, "stockCodes");
-        if (stockCodes && stockCodes.length > 0) {
+        const rawStockCodes = extractJsArray<string>(pingzhongText, "stockCodes");
+        const stockCodes = rawStockCodes
+          ? [...new Set(rawStockCodes.map(normalizeFundHoldingCode).filter(Boolean))]
+          : [];
+        if (stockCodes.length > 0) {
           // 持仓明细：code → { ratio, shareCount, name }
           const holdingMap = new Map<
             string,
@@ -477,36 +585,12 @@ export async function getFundHeavyData(
               { headers: { Referer: "https://fundf10.eastmoney.com/" } },
             ).catch(() => "");
             if (holdingText) {
-              // 按行解析（每行是一只股票）
-              // FundArchivesDatas 表格行结构：<tr><td>序号</td><td>代码</td><td><a>名称</a></td><td class='tor'>占比%</td><td class='tol'>持股数</td>...
-              // 改用宽松的行级匹配：找所有 code=XXX 的链接 + 名称 + 占比 + 持股数
-              const rowMatches = [
-                ...holdingText.matchAll(
-                  /code=([0-9A-Z]+)[^>]*>([^<]+)<\/a>[\s\S]*?class='tor'\s*>\s*([\d.]+)%[\s\S]*?class='tol'\s*>\s*([\d.,]+)/g,
-                ),
-              ];
-              for (const m of rowMatches) {
-                const c = m[1].toUpperCase();
-                holdingMap.set(c, {
-                  ratio: parseFloat(m[3]) || 0,
-                  shareCount: parseFloat(String(m[4]).replace(/,/g, "")) || null,
-                  name: m[2].trim(),
+              for (const holding of parseFundHoldingRows(holdingText)) {
+                holdingMap.set(holding.code, {
+                  ratio: holding.ratio,
+                  shareCount: holding.shareCount,
+                  name: holding.name,
                 });
-              }
-              // 兼容旧版：只有 tor 类没有 tol 的退化情况（用 name+ratio 兜底）
-              if (holdingMap.size === 0) {
-                const codeMatches = [...holdingText.matchAll(/code=(\w+)[&"']/g)];
-                const ratioMatches = [
-                  ...holdingText.matchAll(/class='(?:tor|tol)'>\s*([\d.]+)%\s*<\/td>/g),
-                ];
-                const nameMatches = [...holdingText.matchAll(/code=\w+[^>]*>([^<]+)<\/a>/g)];
-                for (let i = 0; i < codeMatches.length; i++) {
-                  holdingMap.set(codeMatches[i][1].toUpperCase(), {
-                    ratio: parseFloat(ratioMatches[i]?.[1] ?? "0") || 0,
-                    shareCount: null,
-                    name: nameMatches[i]?.[1]?.trim() ?? codeMatches[i][1],
-                  });
-                }
               }
             }
           } catch {
@@ -545,7 +629,7 @@ export async function getFundHeavyData(
             const quote = /^\d{6}$/.test(code) ? aShareQuotes.get(code) : undefined;
             result.topHoldings.push({
               symbol: code,
-              name: meta?.name || quote?.name || code,
+              name: resolveHoldingDisplayName(code, meta?.name, quote?.name),
               price: quote?.price ?? 0,
               changePercent: quote?.changePercent ?? 0,
               holdingRatio: meta?.ratio ?? 0,

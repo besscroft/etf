@@ -6,7 +6,7 @@ import * as React from "react";
 import type { EChartsOption } from "echarts";
 
 import { useIsMobile } from "~/hooks/use-media-query";
-import { ChartShell } from "~/components/charts/chart-shell";
+import { ChartShell, CHART_HEIGHTS } from "~/components/charts/chart-shell";
 import {
   makeBaseTextStyle,
   makeTooltip,
@@ -17,10 +17,10 @@ import type { CapitalFlowTrendPoint } from "~/lib/stock-data";
 
 interface CapitalFlowChartProps {
   data: CapitalFlowTrendPoint[];
-  height?: number;
+  height?: number | string;
 }
 
-export function CapitalFlowChart({ data, height = 200 }: CapitalFlowChartProps) {
+export function CapitalFlowChart({ data, height = CHART_HEIGHTS.compact }: CapitalFlowChartProps) {
   const isMobile = useIsMobile();
 
   const option = React.useMemo<EChartsOption>(() => {
@@ -97,6 +97,7 @@ export function CapitalFlowChart({ data, height = 200 }: CapitalFlowChartProps) 
       emptyMessage="暂无资金流数据"
       height={height}
       option={option}
+      variant="compact"
     />
   );
 }

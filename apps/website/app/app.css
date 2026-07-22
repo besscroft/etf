@@ -210,6 +210,22 @@ body {
 }
 
 @layer components {
+  .chart-skeleton {
+    min-height: 0;
+  }
+
+  .chart-skeleton-compact {
+    height: clamp(200px, 28vw, 300px);
+  }
+
+  .chart-skeleton-standard {
+    height: clamp(230px, 32vw, 380px);
+  }
+
+  .chart-skeleton-tall {
+    height: clamp(300px, 42vw, 520px);
+  }
+
   .market-workspace {
     --radius: 0.25rem;
     background-color: var(--background);

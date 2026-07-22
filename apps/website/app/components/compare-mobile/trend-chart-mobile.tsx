@@ -26,7 +26,6 @@ export function TrendChartMobile({
         funds={fundsWithData}
         defaultRange={defaultRange}
         detailHref={detailHref}
-        height={240}
         showRangeControls={false}
       />
     </div>

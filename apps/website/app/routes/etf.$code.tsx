@@ -171,7 +171,6 @@ function ETFWithQuote({
                 <KLineChart
                   dataByPeriod={kline}
                   defaultPeriod="minute"
-                  height={320}
                   minuteData={minute}
                   prevClose={quote.prevClose}
                 />
@@ -221,7 +220,7 @@ function ETFPageSkeleton() {
           </div>
         </CardHeader>
         <CardContent>
-          <Skeleton className="h-[320px] w-full" />
+          <Skeleton className="chart-skeleton chart-skeleton-tall w-full" />
         </CardContent>
       </Card>
     </div>
@@ -244,7 +243,7 @@ function ChartFallback() {
           </Button>
         ))}
       </div>
-      <div className="flex h-[320px] items-center justify-center text-xs text-muted-foreground">
+      <div className="chart-skeleton chart-skeleton-tall flex items-center justify-center text-xs text-muted-foreground">
         行情图加载中...
       </div>
     </div>

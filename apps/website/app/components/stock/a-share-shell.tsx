@@ -39,7 +39,7 @@ export function AShareShell({
     <div className="market-workspace min-h-[100dvh] bg-background text-foreground">
       <header className="sticky top-0 z-50 border-b border-border/80 bg-background/95 backdrop-blur-xl">
         <div className="mx-auto flex min-h-14 max-w-[1600px] items-center gap-3 px-3 sm:px-5">
-          <Link to="/a-shares" className="flex shrink-0 items-center gap-2">
+          <Link to="/" className="flex shrink-0 items-center gap-2" aria-label="返回首页">
             <span className="flex size-7 items-center justify-center border border-primary/50 bg-primary/10 text-primary">
               <BarChart3 className="size-3.5" strokeWidth={1.8} />
             </span>

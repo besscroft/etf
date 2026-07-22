@@ -95,7 +95,7 @@ export function CapitalFlowPanel({ flow, trend, loading, trendDays = 30 }: Capit
         {/* 趋势图 */}
         <div>
           <p className="mb-1 text-[11px] text-muted-foreground">近 {trendDays} 日主力净流入</p>
-          <CapitalFlowChart data={trend} height={200} />
+          <CapitalFlowChart data={trend} />
         </div>
       </CardContent>
     </Card>

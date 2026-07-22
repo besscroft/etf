@@ -3,7 +3,7 @@ import type { EChartsOption } from "echarts";
 
 import { Button } from "~/components/ui/button";
 import { useIsMobile } from "~/hooks/use-media-query";
-import { ChartShell } from "./chart-shell";
+import { ChartShell, CHART_HEIGHTS } from "./chart-shell";
 import {
   downColor,
   formatNumber,
@@ -30,14 +30,14 @@ const RANGES: Array<{ key: RangeKey; label: string; days: number }> = [
 interface FundNavTrendChartProps {
   data: Array<{ date: string; nav: number; dailyReturn?: number }>;
   defaultRange?: RangeKey;
-  height?: number;
+  height?: number | string;
   showRangeControls?: boolean;
 }
 
 export function FundNavTrendChart({
   data,
   defaultRange = "1y",
-  height = 280,
+  height = CHART_HEIGHTS.standard,
   showRangeControls = true,
 }: FundNavTrendChartProps) {
   const isMobile = useIsMobile();

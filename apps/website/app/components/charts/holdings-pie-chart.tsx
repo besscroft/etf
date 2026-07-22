@@ -2,7 +2,7 @@ import * as React from "react";
 import type { ECElementEvent, EChartsOption } from "echarts";
 
 import { useIsMobile } from "~/hooks/use-media-query";
-import { ChartShell } from "./chart-shell";
+import { ChartShell, CHART_HEIGHTS } from "./chart-shell";
 import { chartPalette, formatPercent, makeBaseTextStyle } from "./chart-utils";
 
 interface HoldingLike {
@@ -14,12 +14,16 @@ interface HoldingLike {
 }
 
 interface HoldingsPieChartProps {
-  height?: number;
+  height?: number | string;
   holdings: HoldingLike[];
   onDrilldown?: (holding: HoldingLike) => void;
 }
 
-export function HoldingsPieChart({ height = 260, holdings, onDrilldown }: HoldingsPieChartProps) {
+export function HoldingsPieChart({
+  height = CHART_HEIGHTS.compact,
+  holdings,
+  onDrilldown,
+}: HoldingsPieChartProps) {
   const isMobile = useIsMobile();
   const data = React.useMemo(
     () =>
@@ -102,7 +106,9 @@ export function HoldingsPieChart({ height = 260, holdings, onDrilldown }: Holdin
     [data, onDrilldown],
   );
 
-  return <ChartShell empty={empty} events={events} height={height} option={option} />;
+  return (
+    <ChartShell empty={empty} events={events} height={height} option={option} variant="compact" />
+  );
 }
 
 export type { HoldingLike };

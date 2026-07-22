@@ -1,5 +1,5 @@
 import type { Route } from "./+types/otc-fund";
-import { Await, useLoaderData, useSearchParams } from "react-router";
+import { Await, useLoaderData, useRevalidator, useSearchParams } from "react-router";
 import { Suspense, useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
@@ -37,6 +37,7 @@ import { DURATION, EASING } from "~/lib/motion";
 import { ShareExport } from "~/components/share-export";
 import { AppHeader } from "~/components/app-header";
 import { FundDetailPanelSkeleton } from "~/components/ui/skeletons";
+import { PreservedAsyncSection } from "~/components/ui/preserved-async-section";
 import { FundNavTrendChart, HoldingsPieChart } from "~/components/charts";
 
 export function meta() {
@@ -65,6 +66,7 @@ export default function OTCFundDetail() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
+  const revalidator = useRevalidator();
 
   // 分类过滤（URL 同步）
   const categoryParam = searchParams.get("category") as OTCCategory | null;
@@ -210,26 +212,33 @@ export default function OTCFundDetail() {
         </section>
 
         {/* 分析内容 */}
-        <Suspense fallback={<FundDetailPanelSkeleton />}>
-          <Await resolve={fundDetail}>
-            {(initialDetail) =>
-              initialDetail ? (
-                <>
-                  <div className="mb-3 flex justify-end">
-                    <ShareExport
-                      module="analysis"
-                      data={{ fund: initialDetail }}
-                      fileName={`otc-fund-${initialDetail.code}`}
-                    />
-                  </div>
-                  <AnalysisContent fund={initialDetail} />
-                </>
-              ) : (
-                <EmptyState />
-              )
-            }
-          </Await>
-        </Suspense>
+        <PreservedAsyncSection
+          resolve={fundDetail}
+          fallback={<FundDetailPanelSkeleton />}
+          errorElement={
+            <div className="border bg-card p-6 text-sm text-muted-foreground">
+              基金数据暂时不可用，请稍后重试。
+            </div>
+          }
+          onRetry={() => revalidator.revalidate()}
+        >
+          {(initialDetail) =>
+            initialDetail ? (
+              <>
+                <div className="mb-3 flex justify-end">
+                  <ShareExport
+                    module="analysis"
+                    data={{ fund: initialDetail }}
+                    fileName={`otc-fund-${initialDetail.code}`}
+                  />
+                </div>
+                <AnalysisContent fund={initialDetail} />
+              </>
+            ) : (
+              <EmptyState />
+            )
+          }
+        </PreservedAsyncSection>
       </main>
 
       {/* 移动端全屏搜索面板 */}

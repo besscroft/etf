@@ -1,15 +1,17 @@
 import type { Route } from "./+types/otc-funds";
 import { Await, useLoaderData, useSearchParams } from "react-router";
-import { Suspense, useMemo, useState } from "react";
-import { ArrowRight, BarChart3, LineChart, Search, Wallet, X } from "lucide-react";
+import { Suspense, useCallback, useMemo, useState } from "react";
+import { ArrowRight, BarChart3, Check, LineChart, Plus, Search, Wallet, X } from "lucide-react";
 
 import { AppHeader } from "~/components/app-header";
-import { CategoryChips } from "~/components/otc";
+import { CategoryChips, FundCompareDock } from "~/components/otc";
+import { MAX_COMPARE } from "~/components/compare-mobile/constants";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Skeleton } from "~/components/ui/skeleton";
 import { AppLink as Link } from "~/components/ui/link";
+import { cn } from "~/lib/utils";
 import { buildMeta } from "~/lib/seo";
 import {
   getPublicOTCFundData,
@@ -37,6 +39,7 @@ export default function OTCFunds() {
   const { fundList } = useLoaderData<typeof loader>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState("");
+  const [selectedCodes, setSelectedCodes] = useState<string[]>([]);
 
   const categoryParam = searchParams.get("category") as OTCCategory | null;
   const activeCategory: OTCCategory | "all" =
@@ -52,6 +55,14 @@ export default function OTCFunds() {
     setSearchParams(next, { replace: true });
   };
 
+  const toggleFund = useCallback((code: string) => {
+    setSelectedCodes((current) => {
+      if (current.includes(code)) return current.filter((item) => item !== code);
+      if (current.length >= MAX_COMPARE) return current;
+      return [...current, code];
+    });
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       <AppHeader currentLabel="场外基金" />
@@ -63,7 +74,9 @@ export default function OTCFunds() {
                 activeCategory={activeCategory}
                 funds={list}
                 onCategoryChange={setCategory}
+                onToggleFund={toggleFund}
                 query={query}
+                selectedCodes={selectedCodes}
                 setQuery={setQuery}
               />
             )}
@@ -78,13 +91,17 @@ function FundDiscoveryContent({
   activeCategory,
   funds,
   onCategoryChange,
+  onToggleFund,
   query,
+  selectedCodes,
   setQuery,
 }: {
   activeCategory: OTCCategory | "all";
   funds: OTCClassifiedFundData[];
   onCategoryChange: (category: OTCCategory | "all") => void;
+  onToggleFund: (code: string) => void;
   query: string;
+  selectedCodes: string[];
   setQuery: (query: string) => void;
 }) {
   const filteredFunds = useMemo(() => {
@@ -107,7 +124,7 @@ function FundDiscoveryContent({
       : 0;
 
   return (
-    <div className="space-y-8">
+    <div className={cn("space-y-8", selectedCodes.length > 0 && "pb-36 md:pb-28")}>
       <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="rounded-lg border bg-card p-5 md:p-7">
           <Badge variant="secondary" className="mb-4 rounded-md">
@@ -179,8 +196,16 @@ function FundDiscoveryContent({
 
       {filteredFunds.length > 0 ? (
         <>
-          <FundGrid funds={filteredFunds.slice(0, 24)} />
-          <FundTable funds={filteredFunds} />
+          <FundGrid
+            funds={filteredFunds.slice(0, 24)}
+            onToggleFund={onToggleFund}
+            selectedCodes={selectedCodes}
+          />
+          <FundTable
+            funds={filteredFunds}
+            onToggleFund={onToggleFund}
+            selectedCodes={selectedCodes}
+          />
         </>
       ) : (
         <Card>
@@ -190,11 +215,28 @@ function FundDiscoveryContent({
           </CardContent>
         </Card>
       )}
+      <FundCompareDock
+        funds={funds}
+        max={MAX_COMPARE}
+        onRemove={(code) => onToggleFund(code)}
+        selectedCodes={selectedCodes}
+      />
     </div>
   );
 }
 
-function FundGrid({ funds }: { funds: OTCClassifiedFundData[] }) {
+function FundGrid({
+  funds,
+  onToggleFund,
+  selectedCodes,
+}: {
+  funds: OTCClassifiedFundData[];
+  onToggleFund: (code: string) => void;
+  selectedCodes: string[];
+}) {
+  const selectedCodeSet = new Set(selectedCodes);
+  const reachedLimit = selectedCodes.length >= MAX_COMPARE;
+
   return (
     <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {funds.map((fund) => (
@@ -232,11 +274,21 @@ function FundGrid({ funds }: { funds: OTCClassifiedFundData[] }) {
                   <ArrowRight className="size-3.5" />
                 </Link>
               </Button>
-              <Button asChild size="sm" className="flex-1 rounded-md">
-                <Link to={`/cn/funds?funds=${fund.code}`}>
-                  对比
-                  <BarChart3 className="size-3.5" />
-                </Link>
+              <Button
+                type="button"
+                size="sm"
+                variant={selectedCodeSet.has(fund.code) ? "secondary" : "default"}
+                className="flex-1 rounded-md"
+                onClick={() => onToggleFund(fund.code)}
+                disabled={!selectedCodeSet.has(fund.code) && reachedLimit}
+                aria-pressed={selectedCodeSet.has(fund.code)}
+              >
+                {selectedCodeSet.has(fund.code) ? "已加入" : "加入对比"}
+                {selectedCodeSet.has(fund.code) ? (
+                  <Check className="size-3.5" />
+                ) : (
+                  <Plus className="size-3.5" />
+                )}
               </Button>
             </div>
           </CardContent>
@@ -246,7 +298,18 @@ function FundGrid({ funds }: { funds: OTCClassifiedFundData[] }) {
   );
 }
 
-function FundTable({ funds }: { funds: OTCClassifiedFundData[] }) {
+function FundTable({
+  funds,
+  onToggleFund,
+  selectedCodes,
+}: {
+  funds: OTCClassifiedFundData[];
+  onToggleFund: (code: string) => void;
+  selectedCodes: string[];
+}) {
+  const selectedCodeSet = new Set(selectedCodes);
+  const reachedLimit = selectedCodes.length >= MAX_COMPARE;
+
   return (
     <section className="hidden overflow-hidden rounded-lg border bg-card md:block">
       <table className="w-full text-sm">
@@ -283,9 +346,22 @@ function FundTable({ funds }: { funds: OTCClassifiedFundData[] }) {
                 {fund.scale > 0 ? `${fund.scale.toFixed(1)}亿` : "待更新"}
               </td>
               <td className="px-4 py-3 text-right">
-                <Link to={`/cn/funds?funds=${fund.code}`} className="text-primary hover:underline">
-                  加入对比
-                </Link>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onToggleFund(fund.code)}
+                  disabled={!selectedCodeSet.has(fund.code) && reachedLimit}
+                  aria-pressed={selectedCodeSet.has(fund.code)}
+                  className={selectedCodeSet.has(fund.code) ? "text-foreground" : "text-primary"}
+                >
+                  {selectedCodeSet.has(fund.code) ? (
+                    <Check className="size-3.5" />
+                  ) : (
+                    <Plus className="size-3.5" />
+                  )}
+                  {selectedCodeSet.has(fund.code) ? "已加入" : "加入对比"}
+                </Button>
               </td>
             </tr>
           ))}

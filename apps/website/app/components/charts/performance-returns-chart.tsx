@@ -4,7 +4,7 @@ import { useNavigate } from "react-router";
 
 import type { FundDetailData } from "~/lib/market-data";
 import { useIsMobile } from "~/hooks/use-media-query";
-import { ChartShell } from "./chart-shell";
+import { ChartShell, CHART_HEIGHTS } from "./chart-shell";
 import {
   chartPalette,
   downColor,
@@ -24,13 +24,13 @@ const PERIODS: Array<{ key: keyof FundDetailData["performance"]; label: string }
 interface PerformanceReturnsChartProps {
   detailHref?: (code: string) => string;
   funds: Array<FundDetailData & { error?: string }>;
-  height?: number;
+  height?: number | string;
 }
 
 export function PerformanceReturnsChart({
   detailHref = (code) => `/otc-fund?code=${code}`,
   funds,
-  height = 300,
+  height = CHART_HEIGHTS.standard,
 }: PerformanceReturnsChartProps) {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
