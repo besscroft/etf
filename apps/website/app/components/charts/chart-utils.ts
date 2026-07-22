@@ -35,7 +35,8 @@ export function getDataZoom(isMobile: boolean): EChartsOption["dataZoom"] {
     throttle: 50,
   };
 
-  if (isMobile) return [inside];
+  // Mobile reserves one-finger horizontal gestures for switching chart periods.
+  if (isMobile) return [];
 
   return [
     inside,

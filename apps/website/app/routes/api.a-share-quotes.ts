@@ -1,23 +1,12 @@
 import type { Route } from "./+types/api.a-share-quotes";
 import { getStockQuotesBatch } from "~/lib/stock-data";
+import type { StockQuote } from "~/lib/stock-data";
+import { buildMarketDataMeta, type MarketDataMeta } from "~/lib/stock-market";
 
 interface QuotesResponse {
-  quotes: Array<{
-    code: string;
-    name: string;
-    price: number;
-    change: number;
-    changePercent: number;
-    open: number;
-    high: number;
-    low: number;
-    prevClose: number;
-    volume: number;
-    turnover: number;
-    market: string;
-    marketLabel: string;
-  }>;
+  quotes: StockQuote[];
   fetchedAt: string;
+  meta: MarketDataMeta;
 }
 
 export async function loader({ request }: Route.LoaderArgs): Promise<QuotesResponse> {
@@ -29,23 +18,17 @@ export async function loader({ request }: Route.LoaderArgs): Promise<QuotesRespo
     .slice(0, 100);
 
   const map = await getStockQuotesBatch(codes);
+  const quotes = [...map.values()];
+  const sourceQuote = quotes.find((quote) => quote.source !== "unavailable") ?? null;
+  const meta = buildMarketDataMeta({
+    source: sourceQuote?.source ?? "unavailable",
+    sourceTimestamp: sourceQuote?.timestamp ?? null,
+    warnings: sourceQuote ? [] : ["批量行情暂时不可用"],
+  });
 
   return {
-    quotes: [...map.values()].map((q) => ({
-      code: q.code,
-      name: q.name,
-      price: q.price,
-      change: q.change,
-      changePercent: q.changePercent,
-      open: q.open,
-      high: q.high,
-      low: q.low,
-      prevClose: q.prevClose,
-      volume: q.volume,
-      turnover: q.turnover,
-      market: q.market,
-      marketLabel: q.marketLabel,
-    })),
-    fetchedAt: new Date().toISOString(),
+    quotes,
+    fetchedAt: meta.fetchedAt,
+    meta,
   };
 }

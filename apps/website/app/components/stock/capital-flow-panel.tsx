@@ -62,7 +62,7 @@ export function CapitalFlowPanel({ flow, trend, loading, trendDays = 30 }: Capit
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm">资金流向</CardTitle>
           <span className="text-[11px] text-muted-foreground">
-            主力{flow.mainNet >= 0 ? "净流入" : "净流出"}
+            {flow.date} · 主力{flow.mainNet >= 0 ? "净流入" : "净流出"}
           </span>
         </div>
       </CardHeader>
@@ -72,8 +72,7 @@ export function CapitalFlowPanel({ flow, trend, loading, trendDays = 30 }: Capit
           <div className="flex items-baseline justify-between">
             <span className="text-xs text-muted-foreground">主力净流入</span>
             <span className={cn("font-mono text-lg font-semibold", trendClass(flow.mainNet))}>
-              {flow.mainNet >= 0 ? "+" : ""}
-              {formatAmount(flow.mainNet)}
+              {formatSignedAmount(flow.mainNet)}
             </span>
           </div>
         </div>
@@ -87,8 +86,7 @@ export function CapitalFlowPanel({ flow, trend, loading, trendDays = 30 }: Capit
             >
               <span className="text-xs text-muted-foreground">{label}</span>
               <span className={cn("font-mono tabular-nums", color)}>
-                {leg.net >= 0 ? "+" : ""}
-                {formatAmount(leg.net)}
+                {formatSignedAmount(leg.net)}
               </span>
             </div>
           ))}
@@ -102,4 +100,9 @@ export function CapitalFlowPanel({ flow, trend, loading, trendDays = 30 }: Capit
       </CardContent>
     </Card>
   );
+}
+
+function formatSignedAmount(value: number) {
+  if (!Number.isFinite(value) || value === 0) return "—";
+  return `${value > 0 ? "+" : ""}${formatAmount(value)}`;
 }

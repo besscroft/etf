@@ -18,6 +18,8 @@ interface WatchlistState {
   hasHydrated: boolean;
   add: (code: string, name?: string) => boolean;
   remove: (code: string) => void;
+  move: (code: string, direction: "up" | "down") => void;
+  clear: () => void;
   toggle: (code: string, name?: string) => boolean;
   has: (code: string) => boolean;
   setHasHydrated: (hasHydrated: boolean) => void;
@@ -75,6 +77,19 @@ export const useWatchlistStore = create<WatchlistState>()(
         const normalized = normalizeCode(code);
         set((state) => ({ stocks: state.stocks.filter((item) => item.code !== normalized) }));
       },
+      move: (code, direction) => {
+        const normalized = normalizeCode(code);
+        set((state) => {
+          const index = state.stocks.findIndex((item) => item.code === normalized);
+          if (index < 0) return state;
+          const nextIndex = direction === "up" ? index - 1 : index + 1;
+          if (nextIndex < 0 || nextIndex >= state.stocks.length) return state;
+          const stocks = [...state.stocks];
+          [stocks[index], stocks[nextIndex]] = [stocks[nextIndex], stocks[index]];
+          return { stocks };
+        });
+      },
+      clear: () => set({ stocks: [] }),
       toggle: (code, name) => {
         const normalized = normalizeCode(code);
         if (!isValidCode(normalized)) return false;

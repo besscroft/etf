@@ -1,27 +1,28 @@
 import type { Route } from "./+types/sectors";
 import * as React from "react";
+import { ArrowUpRight, Layers3, RefreshCw } from "lucide-react";
 import { useLoaderData } from "react-router";
-import { ArrowUpRight, Layers } from "lucide-react";
 
-import { AppHeader } from "~/components/app-header";
-import { Badge } from "~/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
+import { AShareShell } from "~/components/stock/a-share-shell";
 import { Button } from "~/components/ui/button";
 import { AppLink as Link } from "~/components/ui/link";
+import { usePullToRefresh } from "~/hooks/use-pull-to-refresh";
+import { formatAmount, formatPercent, trendClass } from "~/lib/format-ashare";
 import { buildMeta } from "~/lib/seo";
 import { getSectorQuotes, type SectorItem, type SectorType } from "~/lib/stock-data";
-import { formatAmount, formatPercent, trendClass } from "~/lib/format-ashare";
+import type { MarketDataMeta } from "~/lib/stock-market";
+import { cn } from "~/lib/utils";
 
-const SECTOR_TABS: Array<{ key: SectorType; label: string }> = [
-  { key: "industry", label: "行业板块" },
-  { key: "concept", label: "概念板块" },
-  { key: "region", label: "地区板块" },
+const TABS: Array<{ key: SectorType; label: string }> = [
+  { key: "industry", label: "行业" },
+  { key: "concept", label: "概念" },
+  { key: "region", label: "地区" },
 ];
 
 export function meta(_args: Route.MetaArgs) {
   return buildMeta({
-    title: "板块行情",
-    description: "查看 A 股行业、概念、地区板块的实时涨跌幅、主力资金净流入与领涨个股。",
+    title: "A 股板块行情",
+    description: "A 股行业、概念和地区板块涨跌、资金与领涨股。",
     path: "/sectors",
   });
 }
@@ -32,103 +33,154 @@ export async function loader() {
     getSectorQuotes("concept"),
     getSectorQuotes("region"),
   ]);
-  return {
-    industry,
-    concept,
-    region,
-    fetchedAt: new Date().toISOString(),
-  };
+  return { industry, concept, region, fetchedAt: new Date().toISOString() };
 }
 
 export default function Sectors() {
-  const { industry, concept, region, fetchedAt } = useLoaderData<typeof loader>();
+  const initial = useLoaderData<typeof loader>();
   const [tab, setTab] = React.useState<SectorType>("industry");
+  const [data, setData] = React.useState<Record<SectorType, SectorItem[]>>({
+    industry: initial.industry,
+    concept: initial.concept,
+    region: initial.region,
+  });
+  const [meta, setMeta] = React.useState<MarketDataMeta | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const data: Record<SectorType, SectorItem[]> = { industry, concept, region };
-  const items = data[tab] ?? [];
+  const refresh = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/a-share-sectors?type=${tab}&limit=100`, {
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("sector refresh failed");
+      const payload = (await response.json()) as { items: SectorItem[]; meta: MarketDataMeta };
+      setData((current) => ({ ...current, [tab]: payload.items }));
+      setMeta(payload.meta);
+    } catch {
+      setError("板块刷新失败，已保留上次有效数据");
+    } finally {
+      setLoading(false);
+    }
+  }, [tab]);
+
+  React.useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const { pullDistance, refreshing } = usePullToRefresh({ enabled: true, onRefresh: refresh });
+  const items = data[tab];
 
   return (
-    <div className="min-h-screen bg-background">
-      <AppHeader currentLabel="板块行情" />
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-5 lg:py-8">
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Badge variant="secondary">板块行情</Badge>
-          <span className="text-xs text-muted-foreground">
-            数据来源东方财富 · 更新{" "}
-            {new Date(fetchedAt).toLocaleString("zh-CN", {
-              month: "2-digit",
-              day: "2-digit",
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </span>
-        </div>
+    <AShareShell currentLabel="板块行情" pullOffset={pullDistance}>
+      <div className="space-y-4">
+        <section className="flex flex-wrap items-end justify-between gap-4 border-b border-border/70 pb-4">
+          <div>
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <Layers3 className="size-3 text-primary" /> 东方财富板块行情
+              <span>· {meta?.freshness === "live" ? "实时" : "按最新有效数据"}</span>
+            </div>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">板块行情</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              行业、概念与地区板块的涨跌、主力净流入和领涨股。
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void refresh()}
+            disabled={loading || refreshing}
+          >
+            <RefreshCw className={cn("size-3.5", (loading || refreshing) && "animate-spin")} /> 刷新
+          </Button>
+        </section>
 
-        <div className="mb-3 flex flex-nowrap gap-1.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {SECTOR_TABS.map((t) => (
-            <Button
-              key={t.key}
+        <div className="market-segment w-fit">
+          {TABS.map((item) => (
+            <button
+              key={item.key}
               type="button"
-              variant={tab === t.key ? "default" : "secondary"}
-              size="sm"
-              onClick={() => setTab(t.key)}
-              className="shrink-0"
+              onClick={() => setTab(item.key)}
+              className={cn(
+                "px-3 py-1.5 text-xs transition-colors",
+                tab === item.key
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
             >
-              {t.label}
-            </Button>
+              {item.label}
+            </button>
           ))}
         </div>
 
-        {items.length > 0 ? (
-          <SectorTable items={items} />
-        ) : (
-          <div className="flex min-h-48 items-center justify-center rounded-none border bg-card text-sm text-muted-foreground">
-            暂无板块数据
+        {error ? (
+          <p className="border border-[color:var(--market-up)]/40 bg-[color:var(--market-up)]/10 px-3 py-2 text-xs text-[color:var(--market-up-bright)]">
+            {error}
+          </p>
+        ) : null}
+
+        <section className="market-panel overflow-hidden">
+          <div className="market-panel-header">
+            <h2 className="text-sm font-semibold">
+              {TABS.find((item) => item.key === tab)?.label}板块
+            </h2>
+            <span className="font-mono text-[11px] text-muted-foreground">{items.length} 个</span>
           </div>
-        )}
-      </main>
-    </div>
+          <SectorTable items={items} />
+        </section>
+      </div>
+    </AShareShell>
   );
 }
 
 function SectorTable({ items }: { items: SectorItem[] }) {
+  if (items.length === 0)
+    return <div className="px-4 py-16 text-center text-xs text-muted-foreground">暂无板块行情</div>;
   return (
     <>
-      <div className="hidden overflow-hidden rounded-none border bg-card md:block">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-xs text-muted-foreground">
+      <div className="hidden overflow-x-auto md:block">
+        <table className="w-full min-w-[720px] text-xs">
+          <thead className="border-b border-border/70 bg-muted/35 text-[11px] text-muted-foreground">
             <tr>
-              <th className="px-4 py-3 text-left font-medium">板块</th>
-              <th className="px-4 py-3 text-right font-medium">涨跌幅</th>
-              <th className="px-4 py-3 text-right font-medium">主力净流入</th>
-              <th className="px-4 py-3 text-left font-medium">领涨股</th>
+              <th className="px-4 py-2.5 text-left font-medium">板块</th>
+              <th className="px-3 py-2.5 text-right font-medium">涨跌幅</th>
+              <th className="px-3 py-2.5 text-right font-medium">主力净流入</th>
+              <th className="px-4 py-2.5 text-left font-medium">领涨股</th>
             </tr>
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={item.code} className="border-t transition-colors hover:bg-muted/30">
+              <tr
+                key={item.code}
+                className="market-table-row border-b border-border/45 last:border-0"
+              >
                 <td className="px-4 py-3">
                   <span className="font-medium">{item.name}</span>
-                  <span className="ml-2 font-mono text-xs text-muted-foreground">{item.code}</span>
+                  <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                    {item.code}
+                  </span>
                 </td>
-                <td className={`px-4 py-3 text-right font-mono ${trendClass(item.changePercent)}`}>
-                  {formatPercent(item.changePercent, false)}
+                <td className={`px-3 py-3 text-right font-mono ${trendClass(item.changePercent)}`}>
+                  {formatPercent(item.changePercent)}
                 </td>
-                <td className={`px-4 py-3 text-right font-mono ${trendClass(item.mainNet)}`}>
-                  {item.mainNet >= 0 ? "+" : ""}
+                <td className={`px-3 py-3 text-right font-mono ${trendClass(item.mainNet)}`}>
                   {formatAmount(item.mainNet)}
                 </td>
                 <td className="px-4 py-3">
-                  {item.leaderName ? (
+                  {item.leaderCode && item.leaderName ? (
                     <Link
                       to={`/stock/${item.leaderCode}`}
-                      className="flex items-center gap-2 hover:text-primary"
+                      className="inline-flex items-center gap-2 hover:text-primary"
                     >
-                      <span className="truncate">{item.leaderName}</span>
-                      <span className={`font-mono text-xs ${trendClass(item.leaderChangePercent)}`}>
-                        {formatPercent(item.leaderChangePercent, false)}
+                      <span>{item.leaderName}</span>
+                      <span
+                        className={`font-mono text-[11px] ${trendClass(item.leaderChangePercent)}`}
+                      >
+                        {formatPercent(item.leaderChangePercent)}
                       </span>
-                      <ArrowUpRight className="size-3 text-muted-foreground" />
+                      <ArrowUpRight className="size-3" />
                     </Link>
                   ) : (
                     <span className="text-muted-foreground">—</span>
@@ -139,39 +191,30 @@ function SectorTable({ items }: { items: SectorItem[] }) {
           </tbody>
         </table>
       </div>
-
-      <div className="grid gap-2 md:hidden">
+      <div className="divide-y divide-border/50 md:hidden">
         {items.map((item) => (
-          <div key={item.code} className="rounded-none border bg-card px-3 py-3">
+          <div key={item.code} className="px-3 py-3">
             <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <span className="block truncate text-sm font-medium">{item.name}</span>
-                <span className="font-mono text-xs text-muted-foreground">{item.code}</span>
-              </div>
+              <span className="min-w-0 truncate text-sm font-medium">{item.name}</span>
               <span className={`font-mono text-sm ${trendClass(item.changePercent)}`}>
-                {formatPercent(item.changePercent, false)}
+                {formatPercent(item.changePercent)}
               </span>
             </div>
-            <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+            <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
               <span>
-                主力{" "}
-                <span className={trendClass(item.mainNet)}>
-                  {item.mainNet >= 0 ? "+" : ""}
-                  {formatAmount(item.mainNet)}
-                </span>
+                主力 <span className={trendClass(item.mainNet)}>{formatAmount(item.mainNet)}</span>
               </span>
-              {item.leaderName && (
+              {item.leaderCode && item.leaderName ? (
                 <Link
                   to={`/stock/${item.leaderCode}`}
-                  className="flex items-center gap-1 hover:text-primary"
+                  className="min-w-0 truncate hover:text-primary"
                 >
-                  <Layers className="size-3" />
-                  <span className="truncate">{item.leaderName}</span>
+                  领涨 {item.leaderName}{" "}
                   <span className={trendClass(item.leaderChangePercent)}>
-                    {formatPercent(item.leaderChangePercent, false)}
+                    {formatPercent(item.leaderChangePercent)}
                   </span>
                 </Link>
-              )}
+              ) : null}
             </div>
           </div>
         ))}

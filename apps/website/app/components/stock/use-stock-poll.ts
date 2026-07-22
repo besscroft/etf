@@ -19,7 +19,7 @@
 
 import { useEffect, useState } from "react";
 
-import { getStockQuote, type StockQuote } from "~/lib/stock-data";
+import type { StockQuote } from "~/lib/stock-data";
 
 export function useStockPoll(code: string, intervalMs = 15_000): StockQuote | null {
   const [quote, setQuote] = useState<StockQuote | null>(null);
@@ -36,8 +36,13 @@ export function useStockPoll(code: string, intervalMs = 15_000): StockQuote | nu
         return;
       }
       try {
-        const fresh = await getStockQuote(code, { bypassCache: true });
-        if (!cancelled && fresh) setQuote(fresh);
+        const res = await fetch(`/api/a-share-quotes?codes=${encodeURIComponent(code)}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error(`quote poll failed: ${res.status}`);
+        const data = (await res.json()) as { quotes?: StockQuote[] };
+        const fresh = data.quotes?.[0] ?? null;
+        if (!cancelled && fresh?.price !== null) setQuote(fresh);
       } catch {
         // 静默：轮询失败不打扰用户
       }

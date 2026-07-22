@@ -90,6 +90,8 @@ body {
   --chart-5: #333333;
   --market-up: #d14b43;
   --market-down: #168f68;
+  --market-up-bright: #ef5b52;
+  --market-down-bright: #1ca77a;
   --radius: 0.5rem;
   --sidebar: #ffffff;
   --sidebar-foreground: #171717;
@@ -127,6 +129,8 @@ body {
   --chart-5: #5c5c5c;
   --market-up: #ef5350;
   --market-down: #26a69a;
+  --market-up-bright: #ff625e;
+  --market-down-bright: #35bcae;
   --sidebar: #141414;
   --sidebar-foreground: #e8e8e8;
   --sidebar-primary: #ffb000;
@@ -202,5 +206,60 @@ body {
   ::view-transition-old(root),
   ::view-transition-new(root) {
     animation: none;
+  }
+}
+
+@layer components {
+  .market-workspace {
+    --radius: 0.25rem;
+    background-color: var(--background);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .market-panel {
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    background: color-mix(in srgb, var(--card) 96%, var(--background));
+    border-radius: 2px;
+  }
+
+  .market-panel-header {
+    display: flex;
+    min-height: 2.5rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    padding: 0.625rem 0.875rem;
+  }
+
+  .market-tag {
+    display: inline-flex;
+    min-height: 1.25rem;
+    align-items: center;
+    border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+    background: color-mix(in srgb, var(--muted) 68%, transparent);
+    padding: 0.125rem 0.375rem;
+    color: var(--muted-foreground);
+    font-size: 0.625rem;
+    line-height: 1;
+  }
+
+  .market-segment {
+    display: inline-flex;
+    min-height: 2rem;
+    align-items: center;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--muted) 44%, transparent);
+    padding: 0.125rem;
+  }
+
+  .market-table-row {
+    transition:
+      background-color 160ms ease,
+      color 160ms ease;
+  }
+
+  .market-table-row:hover {
+    background: color-mix(in srgb, var(--muted) 58%, transparent);
   }
 }

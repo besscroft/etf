@@ -213,7 +213,15 @@ function QuoteTable({ quotes, fetchedAt }: { quotes: DomesticQuoteItem[]; fetche
   );
 }
 
-function Metric({ label, value, tone = 0 }: { label: string; value: string; tone?: number }) {
+function Metric({
+  label,
+  value,
+  tone = 0,
+}: {
+  label: string;
+  value: string;
+  tone?: number | null;
+}) {
   return (
     <div>
       <p className="text-[11px] text-muted-foreground">{label}</p>
@@ -226,24 +234,24 @@ function Metric({ label, value, tone = 0 }: { label: string; value: string; tone
   );
 }
 
-function formatPrice(value: number) {
-  return value > 0 ? value.toFixed(3) : "待更新";
+function formatPrice(value: number | null) {
+  return value !== null && value > 0 ? value.toFixed(3) : "待更新";
 }
 
-function formatPercent(value: number, hasData: number | boolean) {
-  if (!hasData) return "待更新";
+function formatPercent(value: number | null, hasData: number | boolean | null) {
+  if (!hasData || value === null) return "待更新";
   return `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
-function formatTurnover(value: number) {
-  if (value <= 0) return "待更新";
+function formatTurnover(value: number | null) {
+  if (value === null || value <= 0) return "待更新";
   if (value >= 100_000_000) return `${(value / 100_000_000).toFixed(2)}亿`;
   if (value >= 10_000) return `${(value / 10_000).toFixed(2)}万`;
   return value.toFixed(0);
 }
 
-function trendClass(value: number) {
-  if (value > 0) return "text-[color:var(--market-up)]";
-  if (value < 0) return "text-[color:var(--market-down)]";
+function trendClass(value: number | null) {
+  if (value !== null && value > 0) return "text-[color:var(--market-up)]";
+  if (value !== null && value < 0) return "text-[color:var(--market-down)]";
   return "text-muted-foreground";
 }

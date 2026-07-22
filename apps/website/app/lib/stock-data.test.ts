@@ -7,10 +7,20 @@ import {
   isAShareSuggestItem,
   isExchangeETFCode,
   parseKLinePoint,
+  parseEastmoneySourceTimestamp,
   parseMinutePoint,
+  isValidKLinePoint,
 } from "./stock-data";
+import { parseSinaMarketSnapshot } from "./stock-sina-provider";
+import { getMarketPhase } from "./stock-market";
 
 describe("stock-data market helpers", () => {
+  it("uses f124 when an Eastmoney batch quote has no f86 timestamp", () => {
+    expect(parseEastmoneySourceTimestamp({ f86: "-", f124: 1_784_693_892 })).toBe(
+      1_784_693_892_000,
+    );
+  });
+
   it("classifies A shares and exchange ETFs", () => {
     expect(detectDomesticSecurity("600519")).toMatchObject({
       kind: "stock",
@@ -112,5 +122,29 @@ describe("stock-data market helpers", () => {
     expect(domesticSecurityDetailPath("510300")).toBe("/etf/510300");
     expect(domesticSecurityDetailPath("159915")).toBe("/etf/159915");
     expect(otcFundDetailPath("005827")).toBe("/otc-fund?code=005827");
+  });
+
+  it("maps Sina quote levels from shares to lots", () => {
+    const payload =
+      'var hq_str_sh600519="贵州茅台,1300.000,1308.000,1293.040,1308.000,1283.240,1292.630,1293.390,2587706,3342882806.000,100,1292.630,200,1292.620,100,1292.480,100,1292.470,200,1292.450,100,1293.390,700,1293.400,100,1293.490,100,1293.770,800,1293.800,2026-07-22,10:05:24,00,";';
+    const result = parseSinaMarketSnapshot(payload, "600519", "SH", "上海");
+    expect(result?.quote.price).toBeCloseTo(1293.04);
+    expect(result?.quote.volume).toBeCloseTo(25877.06);
+    expect(result?.quote.turnover).toBeCloseTo(3342882806);
+    expect(result?.orderBook.bids[0]).toMatchObject({ price: 1292.63, volume: 1 });
+    expect(result?.orderBook.asks[0]).toMatchObject({ price: 1293.39, volume: 1 });
+    expect(result?.quote.source).toBe("sina");
+  });
+
+  it("rejects malformed OHLC rows and detects Shanghai market phases", () => {
+    expect(isValidKLinePoint(parseKLinePoint("2026-07-07,12,11,10,9,100,1000,1,-1,-1,0"))).toBe(
+      false,
+    );
+    const open = new Date("2026-07-22T02:00:00.000Z");
+    const lunch = new Date("2026-07-22T04:00:00.000Z");
+    const closed = new Date("2026-07-22T08:00:00.000Z");
+    expect(getMarketPhase(open, open.getTime())).toBe("open");
+    expect(getMarketPhase(lunch, lunch.getTime())).toBe("lunch");
+    expect(getMarketPhase(closed, closed.getTime())).toBe("closed");
   });
 });

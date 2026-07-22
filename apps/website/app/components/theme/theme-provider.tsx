@@ -19,12 +19,12 @@ function isThemeMode(value: unknown): value is ThemeMode {
 }
 
 function readStoredMode(): ThemeMode {
-  if (typeof window === "undefined") return "system";
+  if (typeof window === "undefined") return "dark";
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
-    return isThemeMode(stored) ? stored : "system";
+    return isThemeMode(stored) ? stored : "dark";
   } catch {
-    return "system";
+    return "dark";
   }
 }
 
@@ -54,9 +54,16 @@ function applyDocumentTheme(mode: ThemeMode, resolvedTheme: ResolvedTheme) {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setModeState] = React.useState<ThemeMode>(readStoredMode);
-  const [systemTheme, setSystemTheme] = React.useState<ResolvedTheme>(getSystemTheme);
+  const [mode, setModeState] = React.useState<ThemeMode>("dark");
+  const [systemTheme, setSystemTheme] = React.useState<ResolvedTheme>("light");
+  const [hasHydrated, setHasHydrated] = React.useState(false);
   const resolvedTheme: ResolvedTheme = mode === "system" ? systemTheme : mode;
+
+  React.useEffect(() => {
+    setModeState(readStoredMode());
+    setSystemTheme(getSystemTheme());
+    setHasHydrated(true);
+  }, []);
 
   React.useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -68,6 +75,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   React.useEffect(() => {
+    if (!hasHydrated) return;
     try {
       if (mode === "system") {
         window.localStorage.removeItem(STORAGE_KEY);
@@ -78,7 +86,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       // Storage can be unavailable in private or restricted browsing contexts.
     }
     applyDocumentTheme(mode, resolvedTheme);
-  }, [mode, resolvedTheme]);
+  }, [hasHydrated, mode, resolvedTheme]);
 
   const value = React.useMemo<ThemeContextValue>(
     () => ({

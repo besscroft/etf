@@ -441,17 +441,17 @@ function HomeSkeleton() {
   );
 }
 
-function formatPrice(value: number) {
-  return value > 0 ? value.toFixed(2) : "待更新";
+function formatPrice(value: number | null) {
+  return value !== null && value > 0 ? value.toFixed(2) : "待更新";
 }
 
-function formatPercent(value: number, hasData: number | boolean) {
-  if (!hasData) return "待更新";
+function formatPercent(value: number | null, hasData: number | boolean | null) {
+  if (!hasData || value === null) return "待更新";
   return `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
-function trendClass(value: number) {
-  if (value > 0) return "text-[color:var(--market-up)]";
-  if (value < 0) return "text-[color:var(--market-down)]";
+function trendClass(value: number | null) {
+  if (value !== null && value > 0) return "text-[color:var(--market-up)]";
+  if (value !== null && value < 0) return "text-[color:var(--market-down)]";
   return "text-muted-foreground";
 }

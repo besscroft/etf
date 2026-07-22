@@ -15,7 +15,7 @@ interface OrderBookProps {
   book: StockOrderBook | null;
   loading?: boolean;
   /** 最新价，用于相邻档位高亮 */
-  lastPrice?: number;
+  lastPrice?: number | null;
 }
 
 export function OrderBook({ book, loading, lastPrice }: OrderBookProps) {
@@ -86,7 +86,7 @@ export function OrderBook({ book, loading, lastPrice }: OrderBookProps) {
             {lastPrice ? formatPrice(lastPrice) : "—"}
           </span>
           <span className="text-[11px] text-muted-foreground">
-            {book.timestamp > 0
+            {book.timestamp
               ? new Date(book.timestamp).toLocaleTimeString("zh-CN", { hour12: false })
               : ""}
           </span>

@@ -7,6 +7,7 @@ export default [
   route("api/a-share-detail", "routes/api.a-share-detail.ts"),
   route("api/a-share-quotes", "routes/api.a-share-quotes.ts"),
   route("api/a-share-ranking", "routes/api.a-share-ranking.ts"),
+  route("api/a-share-sectors", "routes/api.a-share-sectors.ts"),
   route("a-shares", "routes/a-shares.tsx"),
   route("sectors", "routes/sectors.tsx"),
   route("watchlist", "routes/watchlist.tsx"),

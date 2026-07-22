@@ -8,11 +8,9 @@
 import * as React from "react";
 import { Building2, FileText, Newspaper, ExternalLink } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
-import { Badge } from "~/components/ui/badge";
+import { Card, CardContent, CardHeader } from "~/components/ui/card";
 import { Skeleton } from "~/components/ui/skeleton";
 import { Button } from "~/components/ui/button";
-import { cn } from "~/lib/utils";
 import type { StockCompanyInfo, StockFinancials, StockNewsItem } from "~/lib/stock-data";
 
 type TabKey = "overview" | "financials" | "news";

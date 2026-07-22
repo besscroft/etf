@@ -4,6 +4,7 @@ import {
   type AShareSearchResponse,
   type StockSearchItem,
 } from "~/lib/stock-data";
+import { buildMarketDataMeta } from "~/lib/stock-market";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
@@ -15,17 +16,30 @@ export async function loader({ request }: Route.LoaderArgs): Promise<AShareSearc
 
   try {
     const results = await searchAshareStocks(query, limit);
+    const sourceItem = results.find((item) => item.source !== "unavailable") ?? null;
+    const meta = buildMarketDataMeta({
+      source: sourceItem?.source ?? "unavailable",
+      sourceTimestamp: sourceItem?.timestamp ?? null,
+      warnings: results.length > 0 ? [] : ["未取得有效行情"],
+    });
     return {
       query,
       results,
-      fetchedAt: new Date().toISOString(),
+      fetchedAt: meta.fetchedAt,
+      meta,
       message: buildMessage(query, results, limit),
     };
   } catch {
+    const meta = buildMarketDataMeta({
+      source: "unavailable",
+      sourceTimestamp: null,
+      warnings: ["A 股搜索暂时不可用"],
+    });
     return {
       query,
       results: [],
-      fetchedAt: new Date().toISOString(),
+      fetchedAt: meta.fetchedAt,
+      meta,
       message: "A 股搜索暂时不可用，请稍后再试。",
     };
   }

@@ -26,7 +26,7 @@ import type { MinutePoint } from "~/lib/stock-data";
 interface MinuteChartProps {
   data: MinutePoint[];
   /** 昨收价（用于 markLine 参考线） */
-  prevClose?: number;
+  prevClose?: number | null;
   height?: number;
 }
 
@@ -40,6 +40,7 @@ export function MinuteChart({ data, prevClose = 0, height = 280 }: MinuteChartPr
   const empty = cleaned.length < 2;
 
   const isTrading = isInTradingHours();
+  const effectivePrevClose = prevClose ?? 0;
 
   const option = React.useMemo<EChartsOption>(() => {
     const times = cleaned.map((d) => d.time.slice(8, 12)); // HH:MM
@@ -112,18 +113,18 @@ export function MinuteChart({ data, prevClose = 0, height = 280 }: MinuteChartPr
           lineStyle: { color: lineColor, width: 1.5 },
           areaStyle: { color: `${lineColor}14` },
           markLine:
-            prevClose > 0
+            effectivePrevClose > 0
               ? {
                   silent: true,
                   symbol: "none",
                   label: {
                     color: "var(--muted-foreground)",
                     fontSize: 10,
-                    formatter: () => `昨收 ${prevClose.toFixed(2)}`,
+                    formatter: () => `昨收 ${effectivePrevClose.toFixed(2)}`,
                     position: "insideEndTop",
                   },
                   lineStyle: { color: "var(--muted-foreground)", type: "dashed", width: 1 },
-                  data: [{ yAxis: prevClose }],
+                  data: [{ yAxis: effectivePrevClose }],
                 }
               : undefined,
         },

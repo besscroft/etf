@@ -5,6 +5,7 @@
   "scripts": {
     "build": "react-router build",
     "dev": "react-router dev --host",
+    "test": "node ./node_modules/vitest/vitest.mjs run",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc"
   },
@@ -39,6 +40,6 @@
     "typescript": "^5.9.3",
     "vite": "catalog:",
     "vite-plus": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "4.1.8"
   }
 }

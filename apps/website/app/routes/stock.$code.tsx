@@ -1,34 +1,25 @@
-/**
- * 股票详情页（2026-07-03 新增）
- *
- * 路由：/stock/:code
- *
- * 功能：
- * - 实时报价（大字号 + 涨跌色 + 闪动效果）
- * - K线（日/周/月切换 + 日 K MA5/10/20/60/120/250 均线）
- * - 行情走势（分时 + 日 K / 周 K / 月 K）
- * - Tab：公司概况 / 财务指标 / 近期新闻
- * - 客户端每 15s 轮询实时价
- *
- * 错误处理：
- * - 非法代码（非 6 位数字）→ 404 视图 + noindex
- * - 港股（5 位数字）→ 「港股板块建设中」提示
- * - 数据获取失败 → 走 FundDetailWithRetry 状态机（保持 skeleton 后台重试 3 次）
- */
-
 import type { Route } from "./+types/stock.$code";
+import * as React from "react";
 import { redirect, useLoaderData } from "react-router";
-import { useEffect } from "react";
-import { AlertTriangle, BarChart3, LineChart } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BarChart3, LineChart } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
-import { Button } from "~/components/ui/button";
-import { AppHeader } from "~/components/app-header";
-import { Breadcrumb } from "~/components/ui/breadcrumb";
+import { AShareShell } from "~/components/stock/a-share-shell";
+import { CapitalFlowPanel } from "~/components/stock/capital-flow-panel";
+import { KLineChart } from "~/components/stock/kline-chart";
+import { OrderBook } from "~/components/stock/order-book";
+import { StockInfoTabs } from "~/components/stock/stock-info-tabs";
+import { StockPageSkeleton } from "~/components/stock/stock-page-skeleton";
+import { StockQuoteCard } from "~/components/stock/stock-quote-card";
+import { useStockDetailPoll } from "~/components/stock/use-stock-detail-poll";
+import { useStockPoll } from "~/components/stock/use-stock-poll";
+import { WatchlistButton } from "~/components/stock/watchlist-button";
 import { AsyncSection } from "~/components/ui/async-section";
+import { Button } from "~/components/ui/button";
+import { Card, CardContent } from "~/components/ui/card";
+import { AppLink as Link } from "~/components/ui/link";
 import { buildMeta, buildStockJsonLd } from "~/lib/seo";
+import { useIsMobile } from "~/hooks/use-media-query";
 import {
-  detectAShareMarket,
   getStockCapitalFlow,
   getStockCapitalFlowTrend,
   getStockCompanyInfo,
@@ -45,38 +36,21 @@ import {
   type StockQuote,
 } from "~/lib/stock-data";
 
-import { KLineChart } from "~/components/stock/kline-chart";
-import { StockQuoteCard } from "~/components/stock/stock-quote-card";
-import { StockInfoTabs } from "~/components/stock/stock-info-tabs";
-import { StockPageSkeleton } from "~/components/stock/stock-page-skeleton";
-import { OrderBook } from "~/components/stock/order-book";
-import { CapitalFlowPanel } from "~/components/stock/capital-flow-panel";
-import { WatchlistButton } from "~/components/stock/watchlist-button";
-import { useStockPoll } from "~/components/stock/use-stock-poll";
-import { useStockDetailPoll } from "~/components/stock/use-stock-detail-poll";
-
 const EMPTY_KLINE_MAP: StockKLineMap = { "1d": [], "1w": [], "1m": [] };
 const STOCK_MA_WINDOWS_BY_PERIOD = { "1d": [5, 10, 20, 60, 120, 250] };
 
 export function meta({ data, params }: Route.MetaArgs) {
   const code = params.code;
-  const status = data?.status ?? "unknown";
-
-  if (status === "unsupported") {
+  if (data?.status === "unsupported")
     return buildMeta({
       title: `${code} - 暂不支持`,
-      description: `股票代码 ${code} 不在 A 股范围内，暂不支持查看详情。`,
+      description: `股票代码 ${code} 不在 A 股范围内。`,
       path: `/stock/${code}`,
       noindex: true,
     });
-  }
-
-  // 注：股票真实名是异步数据（quote 走 defer），meta() 同步拿不到。
-  // 客户端 useEffect 拿到真实名后会动态覆盖 document.title。
-  // 这里给搜索引擎一个 code 占位 + JSON-LD 结构化数据（schema.org Quotation）。
   return buildMeta({
-    title: `${code} 股票详情 - 实时行情/K线`,
-    description: `股票代码 ${code} 的实时行情、分时、每日/周/月 K 线、公司概况、财务指标与近期新闻。`,
+    title: `${code} 股票详情 - 实时行情/K 线`,
+    description: `查看 ${code} 的实时行情、分时、日周月 K 线、盘口、资金流和公司资料。`,
     path: `/stock/${code}`,
     type: "article",
     extra: [buildStockJsonLd({ code, name: code, path: `/stock/${code}` })],
@@ -85,47 +59,13 @@ export function meta({ data, params }: Route.MetaArgs) {
 
 export async function loader({ params }: Route.LoaderArgs) {
   const code = params.code;
-
-  if (/^\d{6}$/.test(code) && isExchangeETFCode(code)) {
-    throw redirect(`/etf/${code}`);
-  }
-
-  // 非法代码（不是 6 位 A 股 / 5 位港股）→ 标记 unsupported，meta 走 noindex
-  if (!/^\d{5,6}$/.test(code)) {
-    return {
-      code,
-      status: "unsupported" as const,
-      name: null,
-      quote: Promise.resolve(null),
-      kline: Promise.resolve(EMPTY_KLINE_MAP),
-      minute: Promise.resolve([]),
-      companyInfo: Promise.resolve(null),
-      financials: Promise.resolve(null),
-      news: Promise.resolve([]),
-    };
-  }
-
-  // 港股（5 位）→ 不拉接口，name 为 null 让 UI 提示
-  const isHK = code.length === 5;
-  if (isHK) {
-    return {
-      code,
-      status: "hk" as const,
-      name: null,
-      quote: Promise.resolve(null),
-      kline: Promise.resolve(EMPTY_KLINE_MAP),
-      minute: Promise.resolve([]),
-      companyInfo: Promise.resolve(null),
-      financials: Promise.resolve(null),
-      news: Promise.resolve([]),
-    };
-  }
-
-  // A 股：走全 defer，所有数据后台拉
+  if (/^\d{6}$/.test(code) && isExchangeETFCode(code)) throw redirect(`/etf/${code}`);
+  if (!/^\d{5,6}$/.test(code)) return unsupportedData(code);
+  if (code.length === 5) return { ...unsupportedData(code), status: "hk" as const };
   return {
     code,
     status: "ok" as const,
-    name: null, // 客户端拿到 quote 后回填
+    name: null,
     quote: getStockQuote(code),
     kline: getStockKLineMap(code),
     minute: getStockMinuteTrend(code),
@@ -138,18 +78,28 @@ export async function loader({ params }: Route.LoaderArgs) {
   };
 }
 
+function unsupportedData(code: string) {
+  return {
+    code,
+    status: "unsupported" as const,
+    name: null,
+    quote: Promise.resolve(null),
+    kline: Promise.resolve(EMPTY_KLINE_MAP),
+    minute: Promise.resolve([]),
+    companyInfo: Promise.resolve(null),
+    financials: Promise.resolve(null),
+    news: Promise.resolve([]),
+  };
+}
+
 export default function StockDetail() {
   const data = useLoaderData<typeof loader>();
-
   return (
-    <div className="min-h-screen bg-background">
-      <AppHeader currentLabel="股票详情" />
-      <main className="container mx-auto max-w-4xl px-3 py-6 sm:px-4">
-        {data.status === "unsupported" && <StockUnsupported code={data.code} />}
-        {data.status === "hk" && <HKStockPending code={data.code} />}
-        {data.status === "ok" && <StockContent data={data} />}
-      </main>
-    </div>
+    <AShareShell currentLabel={data.status === "ok" ? "个股详情" : "股票详情"}>
+      {data.status === "unsupported" ? <StockUnsupported code={data.code} /> : null}
+      {data.status === "hk" ? <HKStockPending code={data.code} /> : null}
+      {data.status === "ok" ? <StockContent data={data} /> : null}
+    </AShareShell>
   );
 }
 
@@ -160,183 +110,196 @@ function StockContent({
 }) {
   return (
     <AsyncSection resolve={data.quote} fallback={<StockPageSkeleton code={data.code} />}>
-      {(q) => {
-        const initialQuote = q as StockQuote | null;
-        if (!initialQuote) {
-          return <StockDataFailed code={data.code} />;
-        }
-        return <StockWithQuoteRetry data={data} initialQuote={initialQuote} />;
-      }}
+      {(quote) =>
+        quote ? (
+          <StockWorkspace data={data} initialQuote={quote as StockQuote} />
+        ) : (
+          <StockDataFailed code={data.code} />
+        )
+      }
     </AsyncSection>
   );
 }
 
-/**
- * 实时价轮询 + 标题动态更新
- */
-function StockWithQuoteRetry({
+function StockWorkspace({
   data,
   initialQuote,
 }: {
   data: Extract<ReturnType<typeof useLoaderData<typeof loader>>, { status: "ok" }>;
   initialQuote: StockQuote;
 }) {
-  const polledQuote = useStockPoll(data.code, 15_000);
-  const quote = polledQuote ?? initialQuote;
+  const polledQuote = useStockPoll(data.code, 5_000);
+  const quote = polledQuote?.price !== null && polledQuote ? polledQuote : initialQuote;
+  const [mobilePanel, setMobilePanel] = React.useState<"book" | "flow">("book");
 
-  // 客户端动态 title：拿到真实股票名后覆盖
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    if (!quote.name || quote.name === quote.code) return;
-    document.title = `${quote.name}（${quote.code}）股票详情 - 实时行情/K线`;
-  }, [quote.name, quote.code]);
+  React.useEffect(() => {
+    if (quote.name && quote.name !== quote.code)
+      document.title = `${quote.name}（${quote.code}）股票详情 - 实时行情/K 线`;
+  }, [quote.code, quote.name]);
 
   return (
-    <>
-      <Breadcrumb
-        items={[
-          { name: "首页", path: "/" },
-          { name: "A股行情", path: "/a-shares" },
-          { name: quote.name && quote.name !== quote.code ? quote.name : quote.code },
-        ]}
-      />
-
-      <div className="mb-4 flex items-end gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold md:text-3xl">
-              {quote.name && quote.name !== quote.code ? quote.name : `股票 ${quote.code}`}
-            </h1>
-            <span className="rounded bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
-              {quote.code}
-            </span>
-            <span className="rounded bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
-              {quote.marketLabel}
-            </span>
-            <WatchlistButton code={quote.code} name={quote.name} variant="icon" />
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">数据仅供参考，不构成投资建议</p>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Link to="/a-shares" className="inline-flex items-center gap-1 hover:text-primary">
+            <ArrowLeft className="size-3.5" /> A 股行情
+          </Link>
+          <span>/</span>
+          <span>{quote.name || quote.code}</span>
         </div>
+        <WatchlistButton code={quote.code} name={quote.name} variant="icon" />
       </div>
 
-      {/* 实时价卡片（自带轮询） */}
-      <div className="mb-4">
-        <StockQuoteCard quote={quote} />
-      </div>
+      <StockQuoteCard quote={quote} />
 
-      {/* 盘口 + 资金流向 */}
-      <AsyncSection
-        resolve={Promise.all([data.orderBook, data.capitalFlow, data.capitalFlowTrend]).then(
-          (v) => v,
-        )}
-        fallback={<MarketPanelsFallback />}
-      >
-        {(v) => {
-          const [ob, cf, trend] = v as [
-            Awaited<typeof data.orderBook>,
-            Awaited<typeof data.capitalFlow>,
-            Awaited<typeof data.capitalFlowTrend>,
-          ];
-          return (
-            <StockMarketPanels
-              code={data.code}
-              initialOrderBook={ob ?? null}
-              initialCapitalFlow={cf ?? null}
-              capitalFlowTrend={trend ?? []}
-              lastPrice={quote.price}
-            />
-          );
-        }}
-      </AsyncSection>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <section className="market-panel overflow-hidden">
+          <div className="market-panel-header">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="size-4 text-primary" />
+              <h2 className="text-sm font-semibold">行情走势</h2>
+            </div>
+            <span className="text-[11px] text-muted-foreground">分时 / 日周月 K 线</span>
+          </div>
+          <div className="p-3 sm:p-4">
+            <AsyncSection
+              resolve={Promise.all([data.kline, data.minute])}
+              fallback={<ChartFallback />}
+            >
+              {(value) => {
+                const [kline, minute] = value as [StockKLineMap, Awaited<typeof data.minute>];
+                return (
+                  <KLineChart
+                    dataByPeriod={kline}
+                    defaultPeriod="minute"
+                    height="clamp(380px, 58vh, 600px)"
+                    maWindowsByPeriod={STOCK_MA_WINDOWS_BY_PERIOD}
+                    minuteData={minute}
+                    prevClose={quote.prevClose}
+                  />
+                );
+              }}
+            </AsyncSection>
+          </div>
+        </section>
 
-      {/* 行情走势 */}
-      <Card className="mb-4">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm md:text-base">
-            <BarChart3 className="size-4 text-blue-500" />
-            行情走势
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+        <aside className="space-y-4">
+          <div className="market-segment w-full lg:hidden">
+            <button
+              type="button"
+              onClick={() => setMobilePanel("book")}
+              className={cnTab(mobilePanel === "book")}
+            >
+              五档盘口
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobilePanel("flow")}
+              className={cnTab(mobilePanel === "flow")}
+            >
+              资金流向
+            </button>
+          </div>
           <AsyncSection
-            resolve={Promise.all([data.kline, data.minute]).then((v) => v)}
-            fallback={<KLineChartFallback />}
+            resolve={Promise.all([data.orderBook, data.capitalFlow, data.capitalFlowTrend])}
+            fallback={<PanelFallback />}
           >
-            {(v) => {
-              const [k, m] = v as [
-                StockKLineMap,
-                Array<{
-                  time: string;
-                  price: number;
-                  avgPrice: number;
-                  volume: number;
-                  turnover: number;
-                }>,
+            {(value) => {
+              const [book, flow, trend] = value as [
+                StockOrderBook | null,
+                StockCapitalFlow | null,
+                Awaited<typeof data.capitalFlowTrend>,
               ];
               return (
-                <KLineChart
-                  dataByPeriod={k}
-                  defaultPeriod="minute"
-                  height={320}
-                  maWindowsByPeriod={STOCK_MA_WINDOWS_BY_PERIOD}
-                  minuteData={m}
-                  prevClose={quote.prevClose}
+                <StockMarketPanels
+                  code={data.code}
+                  initialOrderBook={book}
+                  initialCapitalFlow={flow}
+                  capitalFlowTrend={trend}
+                  lastPrice={quote.price}
+                  mobilePanel={mobilePanel}
                 />
               );
             }}
           </AsyncSection>
-        </CardContent>
-      </Card>
+        </aside>
+      </div>
 
-      {/* 信息 Tab */}
-      <div className="mb-4">
-        <AsyncSection
-          resolve={Promise.all([data.companyInfo, data.financials, data.news]).then((v) => v)}
-          fallback={<InfoTabsFallback />}
-        >
-          {(v) => {
-            const [info, fin, news] = v as [
-              Awaited<typeof data.companyInfo>,
-              Awaited<typeof data.financials>,
-              Awaited<typeof data.news>,
-            ];
-            return <StockInfoTabs companyInfo={info} financials={fin} news={news} />;
-          }}
-        </AsyncSection>
-      </div>
-    </>
-  );
-}
-
-function KLineChartFallback() {
-  return (
-    <div className="space-y-3">
-      <div className="flex gap-1.5">
-        <Button type="button" variant="default" size="sm" disabled>
-          分时
-        </Button>
-        <Button type="button" variant="secondary" size="sm" disabled>
-          日K
-        </Button>
-        <Button type="button" variant="secondary" size="sm" disabled>
-          周K
-        </Button>
-        <Button type="button" variant="secondary" size="sm" disabled>
-          月K
-        </Button>
-      </div>
-      <div className="flex h-[320px] items-center justify-center text-xs text-muted-foreground">
-        行情图加载中...
-      </div>
+      <AsyncSection
+        resolve={Promise.all([data.companyInfo, data.financials, data.news])}
+        fallback={<InfoTabsFallback />}
+      >
+        {(value) => {
+          const [info, financials, news] = value as [
+            Awaited<typeof data.companyInfo>,
+            Awaited<typeof data.financials>,
+            Awaited<typeof data.news>,
+          ];
+          return <StockInfoTabs companyInfo={info} financials={financials} news={news} />;
+        }}
+      </AsyncSection>
     </div>
   );
 }
 
+function StockMarketPanels({
+  code,
+  initialOrderBook,
+  initialCapitalFlow,
+  capitalFlowTrend,
+  lastPrice,
+  mobilePanel,
+}: {
+  code: string;
+  initialOrderBook: StockOrderBook | null;
+  initialCapitalFlow: StockCapitalFlow | null;
+  capitalFlowTrend: Awaited<ReturnType<typeof getStockCapitalFlowTrend>>;
+  lastPrice: number | null;
+  mobilePanel: "book" | "flow";
+}) {
+  const isMobile = useIsMobile();
+  const { orderBook, capitalFlow } = useStockDetailPoll(code, 15_000, {
+    orderBook: initialOrderBook,
+    capitalFlow: initialCapitalFlow,
+    minute: null,
+  });
+  if (isMobile)
+    return mobilePanel === "book" ? (
+      <OrderBook book={orderBook} lastPrice={lastPrice} />
+    ) : (
+      <CapitalFlowPanel flow={capitalFlow} trend={capitalFlowTrend} trendDays={30} />
+    );
+  return (
+    <div className="space-y-4">
+      <OrderBook book={orderBook} lastPrice={lastPrice} />
+      <CapitalFlowPanel flow={capitalFlow} trend={capitalFlowTrend} trendDays={30} />
+    </div>
+  );
+}
+
+function cnTab(active: boolean) {
+  return `flex-1 px-3 py-1.5 text-xs ${active ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`;
+}
+
+function ChartFallback() {
+  return (
+    <div className="flex h-[420px] items-center justify-center text-xs text-muted-foreground">
+      行情图加载中
+    </div>
+  );
+}
+function PanelFallback() {
+  return (
+    <div className="market-panel flex h-56 items-center justify-center text-xs text-muted-foreground">
+      盘口与资金加载中
+    </div>
+  );
+}
 function InfoTabsFallback() {
   return (
     <Card>
-      <CardContent className="py-6 text-center text-sm text-muted-foreground">
-        加载中...
+      <CardContent className="py-8 text-center text-xs text-muted-foreground">
+        公司资料加载中
       </CardContent>
     </Card>
   );
@@ -344,114 +307,63 @@ function InfoTabsFallback() {
 
 function StockUnsupported({ code }: { code: string }) {
   return (
-    <div className="py-12 text-center">
-      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-muted">
-        <AlertTriangle className="size-6 text-muted-foreground" />
-      </div>
-      <h2 className="mb-2 text-2xl font-bold">股票代码不支持</h2>
-      <p className="mb-6 text-sm text-muted-foreground">
-        股票代码 {code || "未知"} 不是 A 股 6 位数字代码，暂不支持查看详情。
-      </p>
-      <a
-        href="/otc-funds"
-        className="inline-block rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
-      >
-        浏览场外基金
-      </a>
-    </div>
+    <StatePanel
+      icon={<AlertTriangle className="size-5" />}
+      title="股票代码不支持"
+      description={`股票代码 ${code || "未知"} 不是可用的 A 股代码。`}
+      action={
+        <Button asChild variant="outline" size="sm">
+          <Link to="/a-shares">返回 A 股行情</Link>
+        </Button>
+      }
+    />
   );
 }
-
 function HKStockPending({ code }: { code: string }) {
   return (
-    <div className="py-12 text-center">
-      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-muted">
-        <LineChart className="size-6 text-muted-foreground" />
-      </div>
-      <h2 className="mb-2 text-2xl font-bold">港股详情建设中</h2>
-      <p className="mb-1 text-sm text-muted-foreground">
-        股票代码 {code}（港股）详情页正在开发中。
-      </p>
-      <p className="mb-6 text-xs text-muted-foreground">
-        港股数据接入与行情刷新机制与 A 股不同，敬请期待。
-      </p>
-      <a
-        href="/otc-funds"
-        className="inline-block rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
-      >
-        浏览场外基金
-      </a>
-    </div>
+    <StatePanel
+      icon={<LineChart className="size-5" />}
+      title="港股详情建设中"
+      description={`股票代码 ${code} 属于港股，当前工作台只接入 A 股。`}
+      action={
+        <Button asChild variant="outline" size="sm">
+          <Link to="/a-shares">返回 A 股行情</Link>
+        </Button>
+      }
+    />
   );
 }
-
 function StockDataFailed({ code }: { code: string }) {
   return (
-    <div className="py-12 text-center">
-      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-muted">
-        <AlertTriangle className="size-6 text-muted-foreground" />
-      </div>
-      <h2 className="mb-2 text-2xl font-bold">数据获取失败</h2>
-      <p className="mb-1 text-sm text-muted-foreground">股票代码 {code} 的实时数据暂时无法获取。</p>
-      <p className="mb-6 text-xs text-muted-foreground">请检查代码是否正确，或稍后再试。</p>
-      <button
-        type="button"
-        onClick={() => {
-          if (typeof window !== "undefined") window.location.reload();
-        }}
-        className="inline-block rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
-      >
-        刷新页面
-      </button>
-    </div>
+    <StatePanel
+      icon={<AlertTriangle className="size-5" />}
+      title="实时数据暂不可用"
+      description={`股票代码 ${code} 的行情源未返回有效数据。`}
+      action={
+        <Button type="button" variant="outline" size="sm" onClick={() => window.location.reload()}>
+          重新加载
+        </Button>
+      }
+    />
   );
 }
-
-// 暴露给 meta()：从 quote 同步拿 name
-// 注意：meta() 是同步的，loader 拿不到 quote 的真实 name（要在客户端 promise resolve 后才知）
-// 这里把 initialQuote 也同步进 loader 返回值是更优雅的做法，但为了简化，目前走客户端 useEffect 动态 title
-// 改进点：可加一个 `peekStockName(code)` 同步读缓存，loader 调它给 meta() 准备数据
-// 注：detectAShareMarket 引入但未直接使用（路由里只做长度判断），保留以备后续扩展
-void detectAShareMarket;
-
-/**
- * 盘口 + 资金流向面板（客户端轮询刷新）
- */
-function StockMarketPanels({
-  code,
-  initialOrderBook,
-  initialCapitalFlow,
-  capitalFlowTrend,
-  lastPrice,
+function StatePanel({
+  icon,
+  title,
+  description,
+  action,
 }: {
-  code: string;
-  initialOrderBook: StockOrderBook | null;
-  initialCapitalFlow: StockCapitalFlow | null;
-  capitalFlowTrend: Awaited<ReturnType<typeof getStockCapitalFlowTrend>>;
-  lastPrice: number;
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  action: React.ReactNode;
 }) {
-  const { orderBook, capitalFlow } = useStockDetailPoll(code, 10_000, {
-    orderBook: initialOrderBook,
-    capitalFlow: initialCapitalFlow,
-  });
-
   return (
-    <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-      <OrderBook book={orderBook} lastPrice={lastPrice} />
-      <CapitalFlowPanel flow={capitalFlow} trend={capitalFlowTrend} trendDays={30} />
-    </div>
-  );
-}
-
-function MarketPanelsFallback() {
-  return (
-    <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-      <div className="flex h-[320px] items-center justify-center rounded-none border bg-card text-xs text-muted-foreground">
-        盘口加载中...
-      </div>
-      <div className="flex h-[320px] items-center justify-center rounded-none border bg-card text-xs text-muted-foreground">
-        资金流加载中...
-      </div>
-    </div>
+    <section className="market-panel flex min-h-64 flex-col items-center justify-center text-center">
+      <span className="text-muted-foreground">{icon}</span>
+      <h1 className="mt-3 text-lg font-semibold">{title}</h1>
+      <p className="mt-1 max-w-md text-sm text-muted-foreground">{description}</p>
+      <div className="mt-5">{action}</div>
+    </section>
   );
 }

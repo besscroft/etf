@@ -7,11 +7,12 @@
 
 import { useEffect, useState } from "react";
 
-import type { StockCapitalFlow, StockOrderBook } from "~/lib/stock-data";
+import type { MinutePoint, StockCapitalFlow, StockOrderBook } from "~/lib/stock-data";
 
 interface DetailPollResult {
   orderBook: StockOrderBook | null;
   capitalFlow: StockCapitalFlow | null;
+  minute: MinutePoint[] | null;
 }
 
 export function useStockDetailPoll(
@@ -22,6 +23,7 @@ export function useStockDetailPoll(
   const [state, setState] = useState<DetailPollResult>({
     orderBook: initial?.orderBook ?? null,
     capitalFlow: initial?.capitalFlow ?? null,
+    minute: initial?.minute ?? null,
   });
 
   useEffect(() => {
@@ -35,7 +37,7 @@ export function useStockDetailPoll(
         return;
       }
       try {
-        const params = new URLSearchParams({ code, fields: "orderbook,capitalflow" });
+        const params = new URLSearchParams({ code, fields: "orderbook,capitalflow,minute" });
         const res = await fetch(`/api/a-share-detail?${params.toString()}`);
         if (!res.ok) throw new Error(`detail poll failed: ${res.status}`);
         const data = (await res.json()) as DetailPollResult;
@@ -43,6 +45,7 @@ export function useStockDetailPoll(
           setState((prev) => ({
             orderBook: data.orderBook ?? prev.orderBook,
             capitalFlow: data.capitalFlow ?? prev.capitalFlow,
+            minute: data.minute ?? prev.minute,
           }));
         }
       } catch {

@@ -1,17 +1,11 @@
-/**
- * 统一行情图表：分时 / 日 K / 周 K / 月 K
- */
-
 import * as React from "react";
 import type { EChartsOption } from "echarts";
 
 import { Button } from "~/components/ui/button";
-import { useIsMobile } from "~/hooks/use-media-query";
 import { ChartShell } from "~/components/charts/chart-shell";
+import { useIsMobile } from "~/hooks/use-media-query";
 import {
   downColor,
-  getDataZoom,
-  isFiniteNumber,
   makeBaseTextStyle,
   makeTooltip,
   neutralColor,
@@ -29,122 +23,119 @@ import { formatMinuteTimeLabel } from "~/lib/stock-data";
 interface KLineChartProps {
   dataByPeriod: StockKLineMap;
   defaultPeriod?: MarketChartPeriod;
-  height?: number;
+  height?: number | string;
   maWindowsByPeriod?: Partial<Record<KLinePeriod, number[]>>;
   minuteData?: MinutePoint[];
-  prevClose?: number;
+  prevClose?: number | null;
 }
 
 const PERIODS: Array<{ key: MarketChartPeriod; label: string }> = [
   { key: "minute", label: "分时" },
-  { key: "1d", label: "日K" },
-  { key: "1w", label: "周K" },
-  { key: "1m", label: "月K" },
+  { key: "1d", label: "日 K" },
+  { key: "1w", label: "周 K" },
+  { key: "1m", label: "月 K" },
 ];
 
 const DEFAULT_MA_WINDOWS = [5, 10, 20];
-const MA_COLORS = ["#f59e0b", "#8b5cf6", "#14b8a6", "#0ea5e9", "#ec4899", "#64748b"];
+const MA_COLORS = ["#f0b429", "#9d7cf5", "#31b89b", "#4d9de0", "#dd7aa8", "#7c8798"];
 
 export function KLineChart({
   dataByPeriod,
   defaultPeriod = "minute",
-  height = 360,
+  height = 440,
   maWindowsByPeriod,
   minuteData = [],
-  prevClose = 0,
+  prevClose = null,
 }: KLineChartProps) {
   const isMobile = useIsMobile();
   const [period, setPeriod] = React.useState<MarketChartPeriod>(defaultPeriod);
-  const swipeStartX = React.useRef<number | null>(null);
+  const swipeStart = React.useRef<{ x: number; y: number } | null>(null);
   const [swipeHint, setSwipeHint] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    setPeriod(defaultPeriod);
-  }, [defaultPeriod]);
+  React.useEffect(() => setPeriod(defaultPeriod), [defaultPeriod]);
 
-  // 移动端左右滑动切换图表周期
   const onTouchStart = (event: React.TouchEvent) => {
     if (!isMobile || event.touches.length !== 1) return;
-    swipeStartX.current = event.touches[0].clientX;
+    swipeStart.current = { x: event.touches[0].clientX, y: event.touches[0].clientY };
   };
+
   const onTouchEnd = (event: React.TouchEvent) => {
-    if (swipeStartX.current === null) return;
-    const endX = event.changedTouches[0]?.clientX ?? swipeStartX.current;
-    const delta = endX - swipeStartX.current;
-    swipeStartX.current = null;
-    if (Math.abs(delta) < 48) return;
-    const idx = PERIODS.findIndex((p) => p.key === period);
-    const nextIdx = delta < 0 ? Math.min(PERIODS.length - 1, idx + 1) : Math.max(0, idx - 1);
-    if (nextIdx !== idx) {
-      setSwipeHint(PERIODS[nextIdx].label);
-      setPeriod(PERIODS[nextIdx].key);
-      window.setTimeout(() => setSwipeHint(null), 500);
-    }
+    if (swipeStart.current === null) return;
+    const end = event.changedTouches[0];
+    const deltaX = (end?.clientX ?? swipeStart.current.x) - swipeStart.current.x;
+    const deltaY = (end?.clientY ?? swipeStart.current.y) - swipeStart.current.y;
+    swipeStart.current = null;
+    if (Math.abs(deltaX) < 48 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
+    const index = PERIODS.findIndex((item) => item.key === period);
+    const nextIndex = deltaX < 0 ? Math.min(PERIODS.length - 1, index + 1) : Math.max(0, index - 1);
+    if (nextIndex === index) return;
+    setPeriod(PERIODS[nextIndex].key);
+    setSwipeHint(PERIODS[nextIndex].label);
+    window.setTimeout(() => setSwipeHint(null), 500);
   };
 
-  const klineData = period === "minute" ? [] : (dataByPeriod[period] ?? []);
-  const maWindows = React.useMemo(() => {
-    if (period === "minute") return DEFAULT_MA_WINDOWS;
-    return normalizeMAWindows(maWindowsByPeriod?.[period] ?? DEFAULT_MA_WINDOWS);
-  }, [maWindowsByPeriod, period]);
-  const cleanedKLine = React.useMemo(
-    () => klineData.filter((d) => isFiniteNumber(d.close) && d.close > 0),
-    [klineData],
+  const rawKline = period === "minute" ? [] : (dataByPeriod[period] ?? []);
+  const maWindows = React.useMemo(
+    () =>
+      period === "minute"
+        ? DEFAULT_MA_WINDOWS
+        : normalizeMAWindows(maWindowsByPeriod?.[period] ?? DEFAULT_MA_WINDOWS),
+    [maWindowsByPeriod, period],
   );
-  const withMA = React.useMemo(() => {
-    return cleanedKLine.map((d, i, arr) => ({
-      ...d,
-      ma: Object.fromEntries(
-        maWindows.map((window) => [window, average(arr, i, window)]),
-      ) as Record<number, number | null>,
-    }));
-  }, [cleanedKLine, maWindows]);
-
+  const cleanedKline = React.useMemo(() => rawKline.filter(isValidKLinePoint), [rawKline]);
+  const withMA = React.useMemo(
+    () =>
+      cleanedKline.map((point, index, all) => ({
+        ...point,
+        ma: Object.fromEntries(
+          maWindows.map((window) => [window, average(all, index, window)]),
+        ) as Record<number, number | null>,
+      })),
+    [cleanedKline, maWindows],
+  );
   const cleanedMinute = React.useMemo(
-    () => minuteData.filter((d) => isFiniteNumber(d.price) && d.price > 0),
+    () => minuteData.filter((point) => Number.isFinite(point.price) && point.price > 0),
     [minuteData],
   );
-
   const empty = period === "minute" ? cleanedMinute.length < 2 : withMA.length < 2;
-  const emptyMessage = period === "minute" ? "暂无分时数据" : "暂无 K 线数据";
-
-  const option = React.useMemo<EChartsOption>(() => {
-    if (period === "minute") {
-      return makeMinuteOption(cleanedMinute, prevClose, isMobile);
-    }
-    return makeKLineOption(withMA, maWindows, isMobile);
-  }, [cleanedMinute, isMobile, maWindows, period, prevClose, withMA]);
+  const option = React.useMemo<EChartsOption>(
+    () =>
+      period === "minute"
+        ? makeMinuteOption(cleanedMinute, prevClose ?? 0, isMobile)
+        : makeKLineOption(withMA, maWindows, isMobile),
+    [cleanedMinute, isMobile, maWindows, period, prevClose, withMA],
+  );
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-1.5">
-        {PERIODS.map((p) => (
+      <div className="market-segment w-fit">
+        {PERIODS.map((item) => (
           <Button
-            key={p.key}
+            key={item.key}
             type="button"
-            variant={period === p.key ? "default" : "secondary"}
-            size="sm"
-            onClick={() => setPeriod(p.key)}
+            variant={period === item.key ? "default" : "ghost"}
+            size="xs"
+            onClick={() => setPeriod(item.key)}
           >
-            {p.label}
+            {item.label}
           </Button>
         ))}
       </div>
-      <div className="relative" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-        <ChartShell empty={empty} emptyMessage={emptyMessage} height={height} option={option} />
-        {isMobile && swipeHint && (
+      <div className="relative touch-pan-y" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        <ChartShell
+          empty={empty}
+          emptyMessage={period === "minute" ? "暂无分时数据" : "暂无 K 线数据"}
+          height={height}
+          option={option}
+        />
+        {isMobile && swipeHint ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <span className="rounded-none border bg-popover/90 px-3 py-1 text-sm font-medium shadow-sm">
+            <span className="border border-border bg-popover/95 px-3 py-1 text-sm font-medium shadow-xl">
               {swipeHint}
             </span>
           </div>
-        )}
+        ) : null}
       </div>
-      {isMobile && (
-        <p className="text-center text-[11px] text-muted-foreground">
-          左右滑动可切换分时 / 日K / 周K / 月K
-        </p>
-      )}
     </div>
   );
 }
@@ -154,83 +145,131 @@ function makeMinuteOption(
   prevClose: number,
   isMobile: boolean,
 ): EChartsOption {
-  const times = data.map((d) => formatMinuteTimeLabel(d.time));
-  const prices = data.map((d) => d.price);
-  const avgPrices = data.map((d) => d.avgPrice);
-  const first = prevClose > 0 ? prevClose : (data[0]?.price ?? 0);
-  const last = data[data.length - 1]?.price ?? first;
+  const points: Array<{ label: string; price: number | null; avg: number | null; volume: number }> =
+    [];
+  let previousLabel = "";
+  for (const point of data) {
+    const label = formatMinuteTimeLabel(point.time);
+    if (previousLabel === "11:30" && label >= "13:00")
+      points.push({ label: "午休", price: null, avg: null, volume: 0 });
+    points.push({
+      label,
+      price: point.price,
+      avg: point.avgPrice > 0 ? point.avgPrice : null,
+      volume: point.volume,
+    });
+    previousLabel = label;
+  }
+  const labels = points.map((point) => point.label);
+  const prices = points.map((point) => point.price);
+  const avgs = points.map((point) => point.avg);
+  const volumes = points.map((point) => point.volume);
+  const first = prices.find((value): value is number => value !== null) ?? prevClose;
+  const last = [...prices].reverse().find((value): value is number => value !== null) ?? first;
   const lineColor = last >= first ? upColor : downColor;
-
+  const validPrices = prices.filter((value): value is number => value !== null);
+  const maxPrice = Math.max(...validPrices, prevClose, 1);
+  const minPrice = Math.min(...validPrices, prevClose > 0 ? prevClose : maxPrice);
+  const center = prevClose > 0 ? prevClose : (maxPrice + minPrice) / 2;
+  const range =
+    Math.max(...validPrices.map((value) => Math.abs(value - center)), center * 0.002, 0.02) * 1.08;
+  const zoom = isMobile
+    ? []
+    : [
+        { type: "inside", xAxisIndex: [0, 1], filterMode: "none", throttle: 50 },
+        {
+          type: "slider",
+          xAxisIndex: [0, 1],
+          bottom: 0,
+          height: 16,
+          showDetail: false,
+          brushSelect: false,
+        },
+      ];
   return {
-    animation: data.length <= 260,
+    animation: points.length <= 260,
     aria: { enabled: true },
-    color: [lineColor, neutralColor],
-    dataZoom: getDataZoom(isMobile),
-    grid: { bottom: isMobile ? 22 : 34, containLabel: true, left: 4, right: 8, top: 12 },
+    dataZoom: zoom,
+    grid: [
+      { left: 8, right: 12, top: 12, height: "66%", containLabel: true },
+      { left: 8, right: 12, top: "80%", height: "13%", containLabel: true },
+    ],
     textStyle: makeBaseTextStyle(),
-    tooltip: {
-      ...makeTooltip(),
-      formatter: (params: unknown) => {
-        const arr = Array.isArray(params) ? params : [params];
-        const priceRow = arr.find((p) => (p as { seriesName?: string }).seriesName === "实时价");
-        const avgRow = arr.find((p) => (p as { seriesName?: string }).seriesName === "均价");
-        const time = (priceRow as { name?: string } | undefined)?.name ?? "";
-        const price = (priceRow as { value?: number } | undefined)?.value;
-        const avg = (avgRow as { value?: number } | undefined)?.value;
-        return [
-          `<div style="font-weight:600;margin-bottom:4px">${time}</div>`,
-          `<div>价格：${formatPrice(price)}</div>`,
-          `<div>均价：${formatPrice(avg)}</div>`,
-        ].join("");
+    tooltip: { ...makeTooltip(), formatter: (params: unknown) => minuteTooltip(params) },
+    xAxis: [
+      {
+        type: "category",
+        data: labels,
+        boundaryGap: false,
+        axisLabel: { show: false },
+        axisLine: { lineStyle: { color: "var(--border)" } },
+        axisTick: { show: false },
       },
-    },
-    xAxis: {
-      axisLabel: { hideOverlap: true },
-      axisLine: { lineStyle: { color: "var(--border)" } },
-      axisTick: { show: false },
-      boundaryGap: false,
-      data: times,
-      type: "category",
-    },
-    yAxis: {
-      axisLabel: { color: "var(--muted-foreground)", formatter: (v: number) => v.toFixed(2) },
-      axisLine: { show: false },
-      scale: true,
-      splitLine: { lineStyle: { color: "rgba(148, 163, 184, 0.18)" } },
-      type: "value",
-    },
+      {
+        type: "category",
+        data: labels,
+        gridIndex: 1,
+        axisLabel: {
+          hideOverlap: true,
+          formatter: (value: string) => (value === "午休" ? "" : value),
+        },
+        axisLine: { lineStyle: { color: "var(--border)" } },
+        axisTick: { show: false },
+      },
+    ],
+    yAxis: [
+      {
+        type: "value",
+        min: center - range,
+        max: center + range,
+        scale: true,
+        axisLabel: {
+          color: "var(--muted-foreground)",
+          formatter: (value: number) => value.toFixed(2),
+        },
+        splitLine: { lineStyle: { color: "rgba(148, 163, 184, 0.16)" } },
+      },
+      { type: "value", gridIndex: 1, show: false },
+    ],
     series: [
       {
-        areaStyle: { color: `${lineColor}14` },
+        type: "line",
+        name: "实时价",
         data: prices,
-        lineStyle: { color: lineColor, width: 1.5 },
+        showSymbol: false,
+        connectNulls: false,
+        lineStyle: { color: lineColor, width: 1.6 },
+        areaStyle: { color: `${lineColor}18` },
         markLine:
           prevClose > 0
             ? {
-                data: [{ yAxis: prevClose }],
-                label: {
-                  color: "var(--muted-foreground)",
-                  fontSize: 10,
-                  formatter: () => `昨收 ${prevClose.toFixed(2)}`,
-                  position: "insideEndTop",
-                },
-                lineStyle: { color: "var(--muted-foreground)", type: "dashed", width: 1 },
                 silent: true,
                 symbol: "none",
+                lineStyle: { color: "var(--muted-foreground)", type: "dashed" },
+                label: {
+                  color: "var(--muted-foreground)",
+                  formatter: () => `昨收 ${prevClose.toFixed(2)}`,
+                },
+                data: [{ yAxis: prevClose }],
               }
             : undefined,
-        name: "实时价",
-        showSymbol: false,
-        smooth: false,
-        type: "line",
       },
       {
-        data: avgPrices,
-        lineStyle: { color: neutralColor, type: "dashed", width: 1 },
-        name: "均价",
-        showSymbol: false,
-        smooth: true,
         type: "line",
+        name: "均价",
+        data: avgs,
+        showSymbol: false,
+        connectNulls: false,
+        lineStyle: { color: neutralColor, width: 1, type: "dashed" },
+      },
+      {
+        type: "bar",
+        name: "成交量",
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        data: volumes,
+        barMaxWidth: 6,
+        itemStyle: { color: `${lineColor}80` },
       },
     ],
   } as EChartsOption;
@@ -241,111 +280,156 @@ function makeKLineOption(
   maWindows: number[],
   isMobile: boolean,
 ): EChartsOption {
-  const dates = data.map((d) => d.date);
-  const candles = data.map((d) => [d.open, d.close, d.low, d.high]);
-  const maNames = maWindows.map((window) => formatMAName(window));
-
+  const dates = data.map((point) => point.date);
+  const candles = data.map((point) => [point.open, point.close, point.low, point.high]);
+  const volumes = data.map((point) => ({
+    value: point.volume,
+    itemStyle: { color: point.close >= point.open ? `${upColor}99` : `${downColor}99` },
+  }));
+  const maNames = maWindows.map((window) => `MA${window}`);
+  const zoom = isMobile
+    ? []
+    : [
+        { type: "inside", xAxisIndex: [0, 1], filterMode: "none", throttle: 50 },
+        {
+          type: "slider",
+          xAxisIndex: [0, 1],
+          bottom: 0,
+          height: 16,
+          showDetail: false,
+          brushSelect: false,
+        },
+      ];
   return {
     animation: data.length <= 200,
     aria: { enabled: true },
-    dataZoom: getDataZoom(isMobile),
-    grid: { bottom: isMobile ? 50 : 60, containLabel: true, left: 4, right: 8, top: 12 },
+    dataZoom: zoom,
+    grid: [
+      { left: 8, right: 12, top: 12, height: "64%", containLabel: true },
+      { left: 8, right: 12, top: "78%", height: "15%", containLabel: true },
+    ],
     legend: {
-      bottom: isMobile ? 26 : 0,
+      bottom: isMobile ? 20 : 0,
       data: maNames,
       textStyle: makeBaseTextStyle(),
-      type: maNames.length > 4 ? "scroll" : "plain",
+      type: "scroll",
     },
     textStyle: makeBaseTextStyle(),
-    tooltip: {
-      ...makeTooltip(),
-      formatter: (params: unknown) => {
-        const arr = Array.isArray(params) ? params : [params];
-        const candle = arr.find(
-          (p) => (p as { seriesType?: string }).seriesType === "candlestick",
-        ) as { data?: (string | number)[]; name?: string } | undefined;
-        if (!candle?.data) return "";
-        const [open, close, low, high] = candle.data as [number, number, number, number];
-        const maRows = maWindows.map((window) => {
-          const name = formatMAName(window);
-          const row = arr.find((p) => (p as { seriesName?: string }).seriesName === name);
-          return `<div>${name}：${formatPrice((row as { value?: number })?.value)}</div>`;
-        });
-        return [
-          `<div style="font-weight:600;margin-bottom:4px">${candle.name ?? ""}</div>`,
-          `<div>开盘：${formatPrice(open)}</div>`,
-          `<div>收盘：${formatPrice(close)}</div>`,
-          `<div>最低：${formatPrice(low)}</div>`,
-          `<div>最高：${formatPrice(high)}</div>`,
-          `<div style="margin-top:4px">${maRows.join("")}</div>`,
-        ].join("");
+    tooltip: { ...makeTooltip(), formatter: (params: unknown) => klineTooltip(params, maNames) },
+    xAxis: [
+      {
+        type: "category",
+        data: dates,
+        boundaryGap: true,
+        axisLabel: { show: false },
+        axisLine: { lineStyle: { color: "var(--border)" } },
+        axisTick: { show: false },
       },
-    },
-    xAxis: {
-      axisLabel: { hideOverlap: true },
-      axisLine: { lineStyle: { color: "var(--border)" } },
-      axisTick: { show: false },
-      boundaryGap: true,
-      data: dates,
-      type: "category",
-    },
-    yAxis: {
-      axisLabel: { color: "var(--muted-foreground)", formatter: (v: number) => v.toFixed(2) },
-      axisLine: { show: false },
-      scale: true,
-      splitLine: { lineStyle: { color: "rgba(148, 163, 184, 0.18)" } },
-      type: "value",
-    },
+      {
+        type: "category",
+        data: dates,
+        gridIndex: 1,
+        boundaryGap: true,
+        axisLabel: { hideOverlap: true },
+        axisLine: { lineStyle: { color: "var(--border)" } },
+        axisTick: { show: false },
+      },
+    ],
+    yAxis: [
+      {
+        type: "value",
+        scale: true,
+        axisLabel: {
+          color: "var(--muted-foreground)",
+          formatter: (value: number) => value.toFixed(2),
+        },
+        splitLine: { lineStyle: { color: "rgba(148, 163, 184, 0.16)" } },
+      },
+      { type: "value", gridIndex: 1, show: false },
+    ],
     series: [
       {
+        type: "candlestick",
+        name: "K 线",
         data: candles,
-        emphasis: { focus: "series" },
         itemStyle: {
           borderColor: upColor,
           borderColor0: downColor,
           color: upColor,
           color0: downColor,
         },
-        name: "K线",
-        type: "candlestick",
       },
       ...maWindows.map((window, index) => ({
-        data: data.map((d) => d.ma[window]),
-        lineStyle: { color: MA_COLORS[index % MA_COLORS.length], width: window >= 120 ? 1.25 : 1 },
-        name: formatMAName(window),
-        silent: true,
-        smooth: true,
-        symbol: "none",
         type: "line",
+        name: `MA${window}`,
+        data: data.map((point) => point.ma[window]),
+        showSymbol: false,
+        smooth: false,
+        symbol: "none",
+        lineStyle: { color: MA_COLORS[index % MA_COLORS.length], width: 1.1 },
       })),
+      { type: "bar", name: "成交量", xAxisIndex: 1, yAxisIndex: 1, data: volumes, barMaxWidth: 7 },
     ],
   } as EChartsOption;
 }
 
-function normalizeMAWindows(windows: number[]): number[] {
-  const normalized = Array.from(
+function minuteTooltip(params: unknown) {
+  const rows = Array.isArray(params) ? params : [params];
+  const first = rows[0] as { name?: string; value?: number } | undefined;
+  const second = rows[1] as { value?: number } | undefined;
+  return `<div style="font-weight:600;margin-bottom:4px">${first?.name ?? ""}</div><div>价格：${formatValue(first?.value)}</div><div>均价：${formatValue(second?.value)}</div>`;
+}
+
+function klineTooltip(params: unknown, maNames: string[]) {
+  const rows = Array.isArray(params) ? params : [params];
+  const candle = rows.find(
+    (row) => (row as { seriesType?: string }).seriesType === "candlestick",
+  ) as { name?: string; data?: number[] } | undefined;
+  if (!candle?.data) return "";
+  const [open, close, low, high] = candle.data;
+  const volume = rows.find((row) => (row as { seriesName?: string }).seriesName === "成交量") as
+    | { value?: number }
+    | undefined;
+  const ma = maNames
+    .map((name) => {
+      const row = rows.find((item) => (item as { seriesName?: string }).seriesName === name) as
+        | { value?: number }
+        | undefined;
+      return `<div>${name}：${formatValue(row?.value)}</div>`;
+    })
+    .join("");
+  return `<div style="font-weight:600;margin-bottom:4px">${candle.name ?? ""}</div><div>开盘：${formatValue(open)}</div><div>收盘：${formatValue(close)}</div><div>最低：${formatValue(low)}</div><div>最高：${formatValue(high)}</div><div>成交量：${volume?.value ? Math.round(volume.value).toLocaleString("zh-CN") : "—"}</div><div style="margin-top:4px">${ma}</div>`;
+}
+
+function formatValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "—";
+}
+
+function isValidKLinePoint(point: KLinePoint) {
+  return (
+    point.high > 0 &&
+    point.low > 0 &&
+    point.low <= point.open &&
+    point.low <= point.close &&
+    point.high >= point.open &&
+    point.high >= point.close
+  );
+}
+
+function normalizeMAWindows(windows: number[]) {
+  const result = Array.from(
     new Set(
       windows
         .map((window) => Math.floor(window))
         .filter((window) => Number.isFinite(window) && window > 0),
     ),
   );
-  return normalized.length > 0 ? normalized : DEFAULT_MA_WINDOWS;
+  return result.length > 0 ? result : DEFAULT_MA_WINDOWS;
 }
 
-function formatMAName(window: number): string {
-  return `MA${window}`;
-}
-
-function average(arr: KLinePoint[], end: number, window: number): number | null {
+function average(data: KLinePoint[], end: number, window: number): number | null {
   if (end < window - 1) return null;
   let sum = 0;
-  for (let i = end - window + 1; i <= end; i++) {
-    sum += arr[i].close;
-  }
+  for (let index = end - window + 1; index <= end; index += 1) sum += data[index].close;
   return sum / window;
-}
-
-function formatPrice(value: unknown): string {
-  return isFiniteNumber(value as number) ? (value as number).toFixed(2) : "—";
 }

@@ -1,5 +1,6 @@
 import type { Route } from "./+types/api.a-share-ranking";
 import { getAshareRankings, type RankingItem, type RankingKind } from "~/lib/stock-data";
+import { buildMarketDataMeta, type MarketDataMeta } from "~/lib/stock-market";
 
 const VALID_KINDS: RankingKind[] = ["gainers", "losers", "turnoverRate", "amount"];
 
@@ -7,6 +8,7 @@ export async function loader({ request }: Route.LoaderArgs): Promise<{
   kind: RankingKind;
   items: RankingItem[];
   fetchedAt: string;
+  meta: MarketDataMeta;
 }> {
   const url = new URL(request.url);
   const rawKind = (url.searchParams.get("kind") ?? "gainers").trim();
@@ -17,9 +19,19 @@ export async function loader({ request }: Route.LoaderArgs): Promise<{
 
   try {
     const items = await getAshareRankings(kind, limit);
-    return { kind, items, fetchedAt: new Date().toISOString() };
+    const meta = buildMarketDataMeta({
+      source: items.length > 0 ? "eastmoney" : "unavailable",
+      sourceTimestamp: items.length > 0 ? Date.now() : null,
+      warnings: items.length > 0 ? [] : ["排行行情暂时不可用"],
+    });
+    return { kind, items, fetchedAt: meta.fetchedAt, meta };
   } catch {
-    return { kind, items: [], fetchedAt: new Date().toISOString() };
+    const meta = buildMarketDataMeta({
+      source: "unavailable",
+      sourceTimestamp: null,
+      warnings: ["排行行情暂时不可用"],
+    });
+    return { kind, items: [], fetchedAt: meta.fetchedAt, meta };
   }
 }
 

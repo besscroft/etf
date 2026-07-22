@@ -25,6 +25,9 @@
  */
 
 import { cachedFetch, fetchJson } from "./market-data";
+import { getSinaMarketSnapshot } from "./stock-sina-provider";
+import type { MarketDataSource } from "./stock-market";
+import type { MarketDataMeta } from "./stock-market";
 
 /** 支持的境内市场 */
 export type AShareMarket = "SH" | "SZ" | "BJ";
@@ -43,17 +46,19 @@ export interface DomesticSecurityMeta {
 export interface StockQuote {
   code: string;
   name: string;
-  price: number;
-  change: number;
-  changePercent: number;
-  open: number;
-  high: number;
-  low: number;
-  prevClose: number;
-  volume: number;
-  turnover: number;
+  price: number | null;
+  change: number | null;
+  changePercent: number | null;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  prevClose: number | null;
+  volume: number | null;
+  turnover: number | null;
+  turnoverRate: number | null;
   /** 数据时间戳（毫秒） */
-  timestamp: number;
+  timestamp: number | null;
+  source: MarketDataSource;
   market: AShareMarket;
   marketLabel: string;
 }
@@ -137,6 +142,7 @@ export interface AShareSearchResponse {
   query: string;
   results: StockSearchItem[];
   fetchedAt: string;
+  meta?: MarketDataMeta;
   message?: string;
 }
 
@@ -186,7 +192,8 @@ export interface StockOrderBook {
   /** 买一 → 买五（下标 0 为买一，4 为买五） */
   bids: OrderBookLevel[];
   /** 更新时间戳（毫秒） */
-  timestamp: number;
+  timestamp: number | null;
+  source: "sina";
 }
 
 // ==================== 资金流向 ====================
@@ -346,19 +353,21 @@ export async function getStockQuote(
   return cachedFetch(
     `stock-quote-${code}`,
     async () => {
-      const empty: StockQuote = {
+      const unavailable: StockQuote = {
         code,
         name: code,
-        price: 0,
-        change: 0,
-        changePercent: 0,
-        open: 0,
-        high: 0,
-        low: 0,
-        prevClose: 0,
-        volume: 0,
-        turnover: 0,
-        timestamp: Date.now(),
+        price: null,
+        change: null,
+        changePercent: null,
+        open: null,
+        high: null,
+        low: null,
+        prevClose: null,
+        volume: null,
+        turnover: null,
+        turnoverRate: null,
+        timestamp: null,
+        source: "unavailable",
         market: meta.prefix,
         marketLabel: meta.marketLabel,
       };
@@ -367,42 +376,46 @@ export async function getStockQuote(
         // push2 stock/get 返回结构：{ rc, rt, svr, lt, full, dlmkts, data: {...} }
         const url =
           `https://push2.eastmoney.com/api/qt/stock/get?secid=${meta.secid}.${code}` +
-          `&fields=f43,f44,f45,f46,f48,f60,f168,f169,f170,f50,f51,f52,f55,f56,f57,f58,f86,f292,f117`;
+          `&fields=f43,f44,f45,f46,f47,f48,f60,f168,f169,f170,f50,f51,f52,f55,f56,f57,f58,f86,f117,f124`;
         const res = await fetchJson<{
           data?: Record<string, number | string>;
         }>(url, { headers: { Referer: "https://quote.eastmoney.com/" } });
         const d = res.data;
-        if (!d) return empty;
+        if (!d) throw new Error("empty Eastmoney quote");
 
         // 字段映射（push2）：
         // f43: 当前价*100  f44: 最高*100  f45: 最低*100  f46: 今开*100
-        // f60: 昨收*100   f48: 总成交量(手)  f168: 换手率%  f169: 涨跌额*100
+        // f60: 昨收*100   f47: 成交量(手)  f48: 成交额(元)  f168: 换手率%(*100)
         // f170: 涨跌幅%(*100)  f50: 量比(100x)  f51: 涨停价*100  f52: 跌停价*100
         // f55: 涨速   f56: 5分钟涨跌  f57: 代码  f58: 名称
-        // f86: 数据时间戳(秒)  f292: 流通市值(元)  f117: 总市值(元)
-        const div = (v: number | string | undefined): number => {
-          const n = typeof v === "string" ? parseFloat(v) : (v ?? 0);
-          return Number.isFinite(n) ? n / 100 : 0;
+        // f86: 数据时间戳(秒)  f117: 总市值(元)
+        const numberOrNull = (v: number | string | undefined, scale = 1): number | null => {
+          const n = typeof v === "string" ? parseFloat(v) : v;
+          return typeof n === "number" && Number.isFinite(n) ? n / scale : null;
         };
+        const price = numberOrNull(d["f43"], 100);
+        if (price === null || price <= 0) throw new Error("invalid Eastmoney price");
         return {
           code,
           name: typeof d["f58"] === "string" && d["f58"] ? String(d["f58"]) : code,
-          price: div(d["f43"]),
-          change: div(d["f169"]),
-          changePercent: div(d["f170"]),
-          open: div(d["f46"]),
-          high: div(d["f44"]),
-          low: div(d["f45"]),
-          prevClose: div(d["f60"]),
-          volume: typeof d["f48"] === "number" ? d["f48"] : parseFloat(String(d["f48"] ?? 0)) || 0,
-          turnover:
-            typeof d["f292"] === "number" ? d["f292"] : parseFloat(String(d["f292"] ?? 0)) || 0,
-          timestamp: typeof d["f86"] === "number" ? d["f86"] * 1000 : Date.now(),
+          price,
+          change: numberOrNull(d["f169"], 100),
+          changePercent: numberOrNull(d["f170"], 100),
+          open: numberOrNull(d["f46"], 100),
+          high: numberOrNull(d["f44"], 100),
+          low: numberOrNull(d["f45"], 100),
+          prevClose: numberOrNull(d["f60"], 100),
+          volume: numberOrNull(d["f47"]),
+          turnover: numberOrNull(d["f48"]),
+          turnoverRate: numberOrNull(d["f168"], 100),
+          timestamp: parseEastmoneySourceTimestamp(d),
+          source: "eastmoney",
           market: meta.prefix,
           marketLabel: meta.marketLabel,
         };
       } catch {
-        return empty;
+        const sina = await getSinaMarketSnapshot(code, meta.prefix, meta.marketLabel);
+        return sina?.quote ?? unavailable;
       }
     },
     30_000,
@@ -450,7 +463,7 @@ export async function getStockQuotesBatch(
       try {
         const url =
           `https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${secidList}` +
-          `&fields=f12,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18&fltt=2&invt=2`;
+          `&fields=f12,f14,f2,f3,f4,f5,f6,f8,f15,f16,f17,f18,f86,f124&fltt=2&invt=2`;
         const res = await fetchJson<{
           data?: { diff?: Array<Record<string, number | string>> };
         }>(url, { headers: { Referer: "https://quote.eastmoney.com/" } });
@@ -459,26 +472,28 @@ export async function getStockQuotesBatch(
           const code = String(row["f12"] ?? "");
           if (code) rows.set(code, row);
         }
-        const num = (v: number | string | undefined): number => {
-          if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+        const num = (v: number | string | undefined): number | null => {
+          if (typeof v === "number") return Number.isFinite(v) ? v : null;
           const n = parseFloat(String(v ?? ""));
-          return Number.isFinite(n) ? n : 0;
+          return Number.isFinite(n) ? n : null;
         };
         for (const item of validCodes) {
           const d = rows.get(item.code);
           if (!d) {
             empty[item.code] = {
               name: item.code,
-              price: 0,
-              change: 0,
-              changePercent: 0,
-              open: 0,
-              high: 0,
-              low: 0,
-              prevClose: 0,
-              volume: 0,
-              turnover: 0,
-              timestamp: Date.now(),
+              price: null,
+              change: null,
+              changePercent: null,
+              open: null,
+              high: null,
+              low: null,
+              prevClose: null,
+              volume: null,
+              turnover: null,
+              turnoverRate: null,
+              timestamp: null,
+              source: "unavailable",
             };
             continue;
           }
@@ -493,7 +508,9 @@ export async function getStockQuotesBatch(
             prevClose: num(d["f18"]),
             volume: num(d["f5"]),
             turnover: num(d["f6"]),
-            timestamp: Date.now(),
+            turnoverRate: num(d["f8"]),
+            timestamp: parseEastmoneySourceTimestamp(d),
+            source: "eastmoney",
           };
         }
         return empty;
@@ -502,16 +519,18 @@ export async function getStockQuotesBatch(
         for (const item of validCodes) {
           empty[item.code] = {
             name: item.code,
-            price: 0,
-            change: 0,
-            changePercent: 0,
-            open: 0,
-            high: 0,
-            low: 0,
-            prevClose: 0,
-            volume: 0,
-            turnover: 0,
-            timestamp: Date.now(),
+            price: null,
+            change: null,
+            changePercent: null,
+            open: null,
+            high: null,
+            low: null,
+            prevClose: null,
+            volume: null,
+            turnover: null,
+            turnoverRate: null,
+            timestamp: null,
+            source: "unavailable",
           };
         }
         return empty;
@@ -625,7 +644,7 @@ export async function getAshareMarketSnapshot(
           invt: "2",
           fid: "f3",
           fs: A_SHARE_CLIST_FS,
-          fields: "f12,f14,f2,f3,f4,f5,f6,f15,f16,f17,f18,f100,f102",
+          fields: "f12,f14,f2,f3,f4,f5,f6,f8,f15,f16,f17,f18,f100,f102",
         });
         const res = await fetchJson<{
           data?: { diff?: EastmoneyClistRow[] };
@@ -689,16 +708,18 @@ function suggestItemToSearchItem(
   return {
     code,
     name: quote?.name && quote.name !== code ? quote.name : name,
-    price: quote?.price ?? 0,
-    change: quote?.change ?? 0,
-    changePercent: quote?.changePercent ?? 0,
-    open: quote?.open ?? 0,
-    high: quote?.high ?? 0,
-    low: quote?.low ?? 0,
-    prevClose: quote?.prevClose ?? 0,
-    volume: quote?.volume ?? 0,
-    turnover: quote?.turnover ?? 0,
-    timestamp: quote?.timestamp ?? Date.now(),
+    price: quote?.price ?? null,
+    change: quote?.change ?? null,
+    changePercent: quote?.changePercent ?? null,
+    open: quote?.open ?? null,
+    high: quote?.high ?? null,
+    low: quote?.low ?? null,
+    prevClose: quote?.prevClose ?? null,
+    volume: quote?.volume ?? null,
+    turnover: quote?.turnover ?? null,
+    turnoverRate: quote?.turnoverRate ?? null,
+    timestamp: quote?.timestamp ?? null,
+    source: quote?.source ?? "unavailable",
     market: meta.prefix,
     marketLabel: marketLabelFromSuggest(item.SecurityTypeName, meta.marketLabel),
     pinyin: String(item.PinYin ?? ""),
@@ -715,16 +736,18 @@ function clistRowToSearchItem(row: EastmoneyClistRow): StockSearchItem | null {
   return {
     code,
     name: String(row.f14 || code),
-    price: numberValue(row.f2),
-    change: numberValue(row.f4),
-    changePercent: numberValue(row.f3),
-    open: numberValue(row.f17),
-    high: numberValue(row.f15),
-    low: numberValue(row.f16),
-    prevClose: numberValue(row.f18),
-    volume: numberValue(row.f5),
-    turnover: numberValue(row.f6),
+    price: nullableNumberValue(row.f2),
+    change: nullableNumberValue(row.f4),
+    changePercent: nullableNumberValue(row.f3),
+    open: nullableNumberValue(row.f17),
+    high: nullableNumberValue(row.f15),
+    low: nullableNumberValue(row.f16),
+    prevClose: nullableNumberValue(row.f18),
+    volume: nullableNumberValue(row.f5),
+    turnover: nullableNumberValue(row.f6),
+    turnoverRate: nullableNumberValue(row.f8),
     timestamp: Date.now(),
+    source: "eastmoney",
     market: meta.prefix,
     marketLabel: meta.marketLabel,
     pinyin: "",
@@ -743,7 +766,7 @@ async function getAshareFallbackSnapshot(limit: number): Promise<StockSearchItem
       industry: "",
       area: "",
     }))
-    .sort((a, b) => b.changePercent - a.changePercent)
+    .sort((a, b) => (b.changePercent ?? -Infinity) - (a.changePercent ?? -Infinity))
     .slice(0, limit);
 }
 
@@ -759,6 +782,22 @@ function numberValue(value: number | string | undefined): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   const n = parseFloat(String(value ?? ""));
   return Number.isFinite(n) ? n : 0;
+}
+
+function nullableNumberValue(value: number | string | undefined): number | null {
+  if (value === undefined || value === null || value === "-") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function parseEastmoneySourceTimestamp(
+  fields: Record<string, number | string | undefined>,
+): number | null {
+  for (const key of ["f86", "f124"] as const) {
+    const seconds = nullableNumberValue(fields[key]);
+    if (seconds !== null && seconds > 0) return seconds * 1000;
+  }
+  return null;
 }
 
 // ==================== K线 ====================
@@ -792,7 +831,10 @@ export async function getStockKLine(
           data?: { klines?: string[] };
         }>(url, { headers: { Referer: "https://quote.eastmoney.com/" } });
         const klines = res.data?.klines ?? [];
-        return klines.map(parseKLinePoint);
+        return klines
+          .map(parseKLinePoint)
+          .filter(isValidKLinePoint)
+          .sort((a, b) => a.date.localeCompare(b.date));
       } catch {
         return [];
       }
@@ -837,6 +879,18 @@ export function parseKLinePoint(line: string): KLinePoint {
   };
 }
 
+export function isValidKLinePoint(point: KLinePoint): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}/.test(point.date)) return false;
+  if (![point.open, point.close, point.high, point.low].every(Number.isFinite)) return false;
+  if (point.high <= 0 || point.low <= 0) return false;
+  return (
+    point.low <= point.open &&
+    point.low <= point.close &&
+    point.high >= point.open &&
+    point.high >= point.close
+  );
+}
+
 // ==================== 分时 ====================
 
 /**
@@ -864,7 +918,10 @@ export async function getStockMinuteTrend(
           data?: { trends?: string[] };
         }>(url, { headers: { Referer: "https://quote.eastmoney.com/" } });
         const trends = res.data?.trends ?? [];
-        return trends.map(parseMinutePoint);
+        return trends
+          .map(parseMinutePoint)
+          .filter((point) => point.price > 0 && point.time.length > 0)
+          .sort((a, b) => a.time.localeCompare(b.time));
       } catch {
         return [];
       }
@@ -1074,12 +1131,10 @@ function stripHtml(s: string): string {
 
 /**
  * 拉取五档买卖盘（盘口）
- * - 东方财富 push2 stock/djpx2
+ * - 新浪 hq.sinajs.cn（东方财富 djpx2 已返回 404）
  * - 默认 3s TTL（盘口变化快，但服务端聚合不需要太频繁；客户端轮询 bypassCache）
  * - 失败返回 null
  *
- * djpx2 返回 data.djpx 为 10 行：[卖五, 卖四, 卖三, 卖二, 卖一, 买一, 买二, 买三, 买四, 买五]
- * 每行 = [时间, 价格(元), 手数, 笔数?]
  */
 export async function getStockOrderBook(
   code: string,
@@ -1091,37 +1146,8 @@ export async function getStockOrderBook(
   return cachedFetch(
     `stock-orderbook-${code}`,
     async () => {
-      try {
-        const url =
-          `https://push2.eastmoney.com/api/qt/stock/djpx2/get?secid=${meta.secid}.${code}` +
-          `&fields1=f1,f2,f3,f4,f5&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60`;
-        const res = await fetchJson<{
-          data?: {
-            djpx?: Array<[string, number | string, number | string]>;
-            name?: string;
-          };
-        }>(url, { headers: { Referer: "https://quote.eastmoney.com/" } });
-        const rows = res.data?.djpx;
-        if (!rows || rows.length < 10) return null;
-
-        const parse = (row: Array<string | number>): OrderBookLevel => ({
-          price: numberValue(row[1]),
-          volume: numberValue(row[2]),
-          amount: numberValue(row[1]) * numberValue(row[2]) * 100,
-        });
-
-        const asks = rows.slice(0, 5).reverse().map(parse); // 卖五..卖一 → 卖一..卖五
-        const bids = rows.slice(5, 10).map(parse); // 买一..买五
-
-        return {
-          code,
-          asks,
-          bids,
-          timestamp: Date.now(),
-        };
-      } catch {
-        return null;
-      }
+      const snapshot = await getSinaMarketSnapshot(code, meta.prefix, meta.marketLabel);
+      return snapshot?.orderBook ?? null;
     },
     3_000,
     opts,
@@ -1266,7 +1292,7 @@ export async function getSectorQuotes(
           invt: "2",
           fid: "f3",
           fs,
-          fields: "f12,f14,f3,f62,f184,f165,f175,f128,f136,f137",
+          fields: "f12,f14,f3,f62,f128,f136,f140",
         });
         const res = await fetchJson<{
           data?: {
@@ -1285,8 +1311,8 @@ export async function getSectorQuotes(
               name,
               changePercent: numberValue(row["f3"]),
               mainNet: numberValue(row["f62"]),
-              leaderCode: String(row["f128"] ?? ""),
-              leaderName: String(row["f135"] ?? row["f128"] ?? ""),
+              leaderCode: String(row["f140"] ?? ""),
+              leaderName: String(row["f128"] ?? ""),
               leaderChangePercent: numberValue(row["f136"]),
             };
           })

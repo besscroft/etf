@@ -529,8 +529,8 @@ export async function getFundHeavyData(
               for (const [code, q] of batch) {
                 aShareQuotes.set(code, {
                   name: q.name,
-                  price: q.price,
-                  changePercent: q.changePercent,
+                  price: q.price ?? 0,
+                  changePercent: q.changePercent ?? 0,
                 });
               }
             } catch {
