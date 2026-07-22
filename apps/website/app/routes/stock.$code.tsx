@@ -1,6 +1,6 @@
 import type { Route } from "./+types/stock.$code";
 import * as React from "react";
-import { redirect, useLoaderData } from "react-router";
+import { redirect, useLoaderData, useRevalidator } from "react-router";
 import { AlertTriangle, ArrowLeft, BarChart3, LineChart } from "lucide-react";
 
 import { AShareShell } from "~/components/stock/a-share-shell";
@@ -17,6 +17,7 @@ import { AsyncSection } from "~/components/ui/async-section";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { AppLink as Link } from "~/components/ui/link";
+import { PreservedAsyncSection } from "~/components/ui/preserved-async-section";
 import { buildMeta, buildStockJsonLd } from "~/lib/seo";
 import { useIsMobile } from "~/hooks/use-media-query";
 import {
@@ -38,6 +39,21 @@ import {
 
 const EMPTY_KLINE_MAP: StockKLineMap = { "1d": [], "1w": [], "1m": [] };
 const STOCK_MA_WINDOWS_BY_PERIOD = { "1d": [5, 10, 20, 60, 120, 250] };
+
+type StockRouteData = Extract<ReturnType<typeof useLoaderData<typeof loader>>, { status: "ok" }>;
+
+interface StockDetailSnapshot {
+  capitalFlow: Awaited<StockRouteData["capitalFlow"]>;
+  capitalFlowTrend: Awaited<StockRouteData["capitalFlowTrend"]>;
+  code: string;
+  companyInfo: Awaited<StockRouteData["companyInfo"]>;
+  financials: Awaited<StockRouteData["financials"]>;
+  kline: Awaited<StockRouteData["kline"]>;
+  minute: Awaited<StockRouteData["minute"]>;
+  news: Awaited<StockRouteData["news"]>;
+  orderBook: Awaited<StockRouteData["orderBook"]>;
+  quote: StockQuote;
+}
 
 export function meta({ data, params }: Route.MetaArgs) {
   const code = params.code;
@@ -103,16 +119,44 @@ export default function StockDetail() {
   );
 }
 
-function StockContent({
-  data,
-}: {
-  data: Extract<ReturnType<typeof useLoaderData<typeof loader>>, { status: "ok" }>;
-}) {
+function StockContent({ data }: { data: StockRouteData }) {
+  const revalidator = useRevalidator();
+  const snapshot = React.useMemo(
+    () => resolveStockDetailSnapshot(data),
+    [
+      data.capitalFlow,
+      data.capitalFlowTrend,
+      data.code,
+      data.companyInfo,
+      data.financials,
+      data.kline,
+      data.minute,
+      data.news,
+      data.orderBook,
+      data.quote,
+    ],
+  );
+  const retry = React.useCallback(() => revalidator.revalidate(), [revalidator]);
+
+  return (
+    <PreservedAsyncSection
+      resolve={snapshot}
+      fallback={<ProgressiveStockContent data={data} />}
+      errorElement={<StockDataFailed code={data.code} onRetry={retry} />}
+      onRetry={retry}
+      showPendingStatus={false}
+    >
+      {(current) => <StockWorkspace key={current.code} snapshot={current} />}
+    </PreservedAsyncSection>
+  );
+}
+
+function ProgressiveStockContent({ data }: { data: StockRouteData }) {
   return (
     <AsyncSection resolve={data.quote} fallback={<StockPageSkeleton code={data.code} />}>
       {(quote) =>
         quote ? (
-          <StockWorkspace data={data} initialQuote={quote as StockQuote} />
+          <ProgressiveStockWorkspace data={data} initialQuote={quote as StockQuote} />
         ) : (
           <StockDataFailed code={data.code} />
         )
@@ -121,14 +165,126 @@ function StockContent({
   );
 }
 
-function StockWorkspace({
+function ProgressiveStockWorkspace({
   data,
   initialQuote,
 }: {
-  data: Extract<ReturnType<typeof useLoaderData<typeof loader>>, { status: "ok" }>;
+  data: StockRouteData;
   initialQuote: StockQuote;
 }) {
-  const polledQuote = useStockPoll(data.code, 5_000);
+  const chartData = React.useMemo(
+    () => Promise.all([data.kline, data.minute] as const),
+    [data.kline, data.minute],
+  );
+  const infoData = React.useMemo(
+    () => Promise.all([data.companyInfo, data.financials, data.news] as const),
+    [data.companyInfo, data.financials, data.news],
+  );
+  const panelData = React.useMemo(
+    () => Promise.all([data.orderBook, data.capitalFlow, data.capitalFlowTrend] as const),
+    [data.capitalFlow, data.capitalFlowTrend, data.orderBook],
+  );
+
+  return (
+    <StockWorkspaceLayout
+      code={data.code}
+      initialQuote={initialQuote}
+      renderChart={(quote) => (
+        <AsyncSection resolve={chartData} fallback={<ChartFallback />}>
+          {(value) => {
+            const [kline, minute] = value as Awaited<typeof chartData>;
+            return (
+              <KLineChart
+                dataByPeriod={kline}
+                defaultPeriod="minute"
+                height="clamp(380px, 58vh, 600px)"
+                maWindowsByPeriod={STOCK_MA_WINDOWS_BY_PERIOD}
+                minuteData={minute}
+                prevClose={quote.prevClose}
+              />
+            );
+          }}
+        </AsyncSection>
+      )}
+      renderInfo={() => (
+        <AsyncSection resolve={infoData} fallback={<InfoTabsFallback />}>
+          {(value) => {
+            const [companyInfo, financials, news] = value as Awaited<typeof infoData>;
+            return <StockInfoTabs companyInfo={companyInfo} financials={financials} news={news} />;
+          }}
+        </AsyncSection>
+      )}
+      renderPanels={(quote, mobilePanel) => (
+        <AsyncSection resolve={panelData} fallback={<PanelFallback />}>
+          {(value) => {
+            const [orderBook, capitalFlow, capitalFlowTrend] = value as Awaited<typeof panelData>;
+            return (
+              <StockMarketPanels
+                code={data.code}
+                initialOrderBook={orderBook}
+                initialCapitalFlow={capitalFlow}
+                capitalFlowTrend={capitalFlowTrend}
+                lastPrice={quote.price}
+                mobilePanel={mobilePanel}
+              />
+            );
+          }}
+        </AsyncSection>
+      )}
+    />
+  );
+}
+
+function StockWorkspace({ snapshot }: { snapshot: StockDetailSnapshot }) {
+  return (
+    <StockWorkspaceLayout
+      code={snapshot.code}
+      initialQuote={snapshot.quote}
+      renderChart={(quote) => (
+        <KLineChart
+          dataByPeriod={snapshot.kline}
+          defaultPeriod="minute"
+          height="clamp(380px, 58vh, 600px)"
+          maWindowsByPeriod={STOCK_MA_WINDOWS_BY_PERIOD}
+          minuteData={snapshot.minute}
+          prevClose={quote.prevClose}
+        />
+      )}
+      renderInfo={() => (
+        <StockInfoTabs
+          companyInfo={snapshot.companyInfo}
+          financials={snapshot.financials}
+          news={snapshot.news}
+        />
+      )}
+      renderPanels={(quote, mobilePanel) => (
+        <StockMarketPanels
+          code={snapshot.code}
+          initialOrderBook={snapshot.orderBook}
+          initialCapitalFlow={snapshot.capitalFlow}
+          capitalFlowTrend={snapshot.capitalFlowTrend}
+          lastPrice={quote.price}
+          mobilePanel={mobilePanel}
+        />
+      )}
+    />
+  );
+}
+
+function StockWorkspaceLayout({
+  code,
+  initialQuote,
+  renderChart,
+  renderInfo,
+  renderPanels,
+}: {
+  code: string;
+  initialQuote: StockQuote;
+  renderChart: (quote: StockQuote) => React.ReactNode;
+  renderInfo: () => React.ReactNode;
+  renderPanels: (quote: StockQuote, mobilePanel: "book" | "flow") => React.ReactNode;
+}) {
+  const polledQuote = useStockPoll(code, 5_000);
   const quote = polledQuote?.price !== null && polledQuote ? polledQuote : initialQuote;
   const [mobilePanel, setMobilePanel] = React.useState<"book" | "flow">("book");
 
@@ -162,43 +318,10 @@ function StockWorkspace({
               </div>
               <span className="text-[11px] text-muted-foreground">分时 / 日周月 K 线</span>
             </div>
-            <div className="p-3 sm:p-4">
-              <AsyncSection
-                resolve={Promise.all([data.kline, data.minute])}
-                fallback={<ChartFallback />}
-              >
-                {(value) => {
-                  const [kline, minute] = value as [StockKLineMap, Awaited<typeof data.minute>];
-                  return (
-                    <KLineChart
-                      dataByPeriod={kline}
-                      defaultPeriod="minute"
-                      height="clamp(380px, 58vh, 600px)"
-                      maWindowsByPeriod={STOCK_MA_WINDOWS_BY_PERIOD}
-                      minuteData={minute}
-                      prevClose={quote.prevClose}
-                    />
-                  );
-                }}
-              </AsyncSection>
-            </div>
+            <div className="p-3 sm:p-4">{renderChart(quote)}</div>
           </section>
 
-          <section className="order-3 min-w-0 lg:order-2">
-            <AsyncSection
-              resolve={Promise.all([data.companyInfo, data.financials, data.news])}
-              fallback={<InfoTabsFallback />}
-            >
-              {(value) => {
-                const [info, financials, news] = value as [
-                  Awaited<typeof data.companyInfo>,
-                  Awaited<typeof data.financials>,
-                  Awaited<typeof data.news>,
-                ];
-                return <StockInfoTabs companyInfo={info} financials={financials} news={news} />;
-              }}
-            </AsyncSection>
-          </section>
+          <section className="order-3 min-w-0 lg:order-2">{renderInfo()}</section>
         </div>
 
         <aside className="order-2 space-y-4 lg:col-start-2 lg:order-none lg:row-start-1">
@@ -218,32 +341,52 @@ function StockWorkspace({
               资金流向
             </button>
           </div>
-          <AsyncSection
-            resolve={Promise.all([data.orderBook, data.capitalFlow, data.capitalFlowTrend])}
-            fallback={<PanelFallback />}
-          >
-            {(value) => {
-              const [book, flow, trend] = value as [
-                StockOrderBook | null,
-                StockCapitalFlow | null,
-                Awaited<typeof data.capitalFlowTrend>,
-              ];
-              return (
-                <StockMarketPanels
-                  code={data.code}
-                  initialOrderBook={book}
-                  initialCapitalFlow={flow}
-                  capitalFlowTrend={trend}
-                  lastPrice={quote.price}
-                  mobilePanel={mobilePanel}
-                />
-              );
-            }}
-          </AsyncSection>
+          {renderPanels(quote, mobilePanel)}
         </aside>
       </div>
     </div>
   );
+}
+
+async function resolveStockDetailSnapshot(data: StockRouteData): Promise<StockDetailSnapshot> {
+  const [
+    quote,
+    kline,
+    minute,
+    orderBook,
+    capitalFlow,
+    capitalFlowTrend,
+    companyInfo,
+    financials,
+    news,
+  ] = await Promise.all([
+    data.quote,
+    data.kline,
+    data.minute,
+    data.orderBook,
+    data.capitalFlow,
+    data.capitalFlowTrend,
+    data.companyInfo,
+    data.financials,
+    data.news,
+  ] as const);
+
+  if (!quote || quote.code !== data.code || quote.price === null) {
+    throw new Error(`No usable quote returned for ${data.code}`);
+  }
+
+  return {
+    capitalFlow,
+    capitalFlowTrend,
+    code: data.code,
+    companyInfo,
+    financials,
+    kline,
+    minute,
+    news,
+    orderBook,
+    quote,
+  };
 }
 
 function StockMarketPanels({
@@ -337,14 +480,19 @@ function HKStockPending({ code }: { code: string }) {
     />
   );
 }
-function StockDataFailed({ code }: { code: string }) {
+function StockDataFailed({ code, onRetry }: { code: string; onRetry?: () => void }) {
   return (
     <StatePanel
       icon={<AlertTriangle className="size-5" />}
       title="实时数据暂不可用"
       description={`股票代码 ${code} 的行情源未返回有效数据。`}
       action={
-        <Button type="button" variant="outline" size="sm" onClick={() => window.location.reload()}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onRetry ?? (() => window.location.reload())}
+        >
           重新加载
         </Button>
       }

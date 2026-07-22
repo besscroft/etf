@@ -7,6 +7,7 @@ interface PreservedAsyncSectionProps<T> {
   fallback: React.ReactNode;
   onRetry?: () => void;
   resolve: PromiseLike<T> | T;
+  showPendingStatus?: boolean;
 }
 
 interface AsyncState<T> {
@@ -25,23 +26,28 @@ export function PreservedAsyncSection<T>({
   fallback,
   onRetry,
   resolve,
+  showPendingStatus = true,
 }: PreservedAsyncSectionProps<T>) {
   const [state, setState] = React.useState<AsyncState<T> | null>(null);
+  const requestIdRef = React.useRef(0);
   const handleResolved = React.useCallback(
     (value: T) => setState({ error: null, pending: false, value }),
     [],
   );
 
   React.useEffect(() => {
+    const requestId = ++requestIdRef.current;
     setState((current) => (current ? { ...current, error: null, pending: true } : current));
 
     let active = true;
     Promise.resolve(resolve).then(
       (value) => {
-        if (active) setState({ error: null, pending: false, value });
+        if (active && requestId === requestIdRef.current) {
+          setState({ error: null, pending: false, value });
+        }
       },
       (error: unknown) => {
-        if (active) {
+        if (active && requestId === requestIdRef.current) {
           setState((current) => (current ? { ...current, error, pending: false } : current));
         }
       },
@@ -54,7 +60,12 @@ export function PreservedAsyncSection<T>({
 
   if (state) {
     return (
-      <AsyncFrame error={state.error} onRetry={onRetry} pending={state.pending}>
+      <AsyncFrame
+        error={state.error}
+        onRetry={onRetry}
+        pending={state.pending}
+        showPendingStatus={showPendingStatus}
+      >
         {children(state.value, state.pending)}
       </AsyncFrame>
     );
@@ -91,16 +102,20 @@ function AsyncFrame({
   error,
   onRetry,
   pending,
+  showPendingStatus,
 }: {
   children: React.ReactNode;
   error: unknown;
   onRetry?: () => void;
   pending: boolean;
+  showPendingStatus: boolean;
 }) {
+  const showStatus = Boolean(error) || (pending && showPendingStatus);
+
   return (
     <div className="relative min-w-0">
       {children}
-      {(pending || Boolean(error)) && (
+      {showStatus && (
         <div className="pointer-events-none absolute right-0 top-0 z-10 flex items-center gap-2 text-xs text-muted-foreground">
           <span className="bg-background/90 px-2 py-1 shadow-sm backdrop-blur-sm">
             {error ? "更新失败，已保留上次数据" : "正在更新"}
